@@ -66,8 +66,12 @@ class ProcessMusic(Task):
         if not os.path.isfile(settings.FEATURE_PATH):
             for (z,p) in enumerate(data):
                 log.info("On file {0}".format(z))
-                data, fs, enc = oggread(p['newpath'])
-                upto = fs* settings.MUSIC_TIME_LIMIT
+                try:
+                    data, fs, enc = oggread(p['newpath'])
+                    upto = fs* settings.MUSIC_TIME_LIMIT
+                except IOError:
+                    log.exception("Could not read file")
+                    continue
                 if data.shape[0]<upto:
                     continue
                 try:
