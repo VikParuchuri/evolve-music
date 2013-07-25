@@ -43,6 +43,26 @@ def make_df(datalist, labels, name_prefix=""):
     df.index = range(df.shape[0])
     return df
 
+def read_sound(fpath):
+    try:
+        data, fs, enc = oggread(fpath)
+        upto = fs* settings.MUSIC_TIME_LIMIT
+    except IOError:
+        log.exception("Could not read file")
+        raise IOError
+    if data.shape[0]<upto:
+        log.error("Music file not long enough.")
+        raise ValueError
+    try:
+        if data.shape[1]!=2:
+            log.error("Invalid dimension count. Do you have left and right channel audio?")
+            raise ValueError
+    except Exception:
+        log.error("Invalid dimension count. Do you have left and right channel audio?")
+        raise ValueError
+    data = data[0:upto,:]
+    return data, fs, enc
+
 class ProcessMusic(Task):
     data = Complex()
 
@@ -68,25 +88,13 @@ class ProcessMusic(Task):
         encs = []
         fss = []
         fnames = []
-        full_data = []
         if not os.path.isfile(settings.FEATURE_PATH):
             for (z,p) in enumerate(data):
                 log.info("On file {0}".format(z))
                 try:
-                    data, fs, enc = oggread(p['newpath'])
-                    upto = fs* settings.MUSIC_TIME_LIMIT
-                except IOError:
-                    log.exception("Could not read file")
-                    continue
-                if data.shape[0]<upto:
-                    continue
-                try:
-                    if data.shape[1]!=2:
-                        continue
+                    data , fs, enc = read_sound(p['newpath'])
                 except Exception:
-                    log.error("Invalid dimension count. Do you have left and right channel audio?")
                     continue
-                data = data[0:upto,:]
                 try:
                     features = process_song(data,fs)
                 except Exception:
@@ -97,7 +105,6 @@ class ProcessMusic(Task):
                 fss.append(fs)
                 encs.append(enc)
                 fnames.append(p['newpath'])
-                full_data.append(data)
             frame = pd.DataFrame(d)
             frame['labels']  = labels
             frame['fs'] = fss
@@ -112,10 +119,7 @@ class ProcessMusic(Task):
         else:
             frame = pd.read_csv(settings.FEATURE_PATH)
 
-        return {
-            'frame' : frame,
-            'full_data' : full_data
-        }
+        return frame
 
 def calc_slope(x,y):
     x_mean = np.mean(x)
@@ -283,29 +287,27 @@ class EvolveMusic(Task):
     def train(self,data,**kwargs):
         non_predictors = kwargs.get('non_predictors')
         target = kwargs.get('target')
-        
-        frame = data['frame']
-        full_data = data['full_data']
 
-        frame.index = range(frame.shape[0])
+        data.index = range(data.shape[0])
 
         alg = RandomForestTrain()
-        good_names = [i for i in frame.columns if i not in non_predictors]
+        good_names = [i for i in data.columns if i not in non_predictors]
         for c in good_names:
-            frame[c] = frame[c].astype(float)
+            data[c] = data[c].astype(float)
 
         for c in good_names:
-            frame[c] = frame[c].real
+            data[c] = data[c].real
 
-        clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
+        clf = alg.train(np.asarray(data[good_names]),data[target],**alg.args)
         importances = clf.feature_importances_
 
-        for i in xrange(0,frame.shape[0]):
-            vec = np.copy(full_data[i])
-            label = frame["labels"][i]
-            fs = frame["fs"][i]
-            enc = frame["enc"][i]
-            name = frame["fname"][i].split("/")[-1]
+        for i in xrange(0,data.shape[0]):
+            fname = data['fname'][i]
+            vec = read_sound(fname)
+            label = data["labels"][i]
+            fs = data["fs"][i]
+            enc = data["enc"][i]
+            name = fname.split("/")[-1]
             feats = calc_features(vec,fs)
             initial_quality = clf.predict_proba(feats)[0,1]
             if initial_quality<.5:
@@ -313,14 +315,13 @@ class EvolveMusic(Task):
             else:
                 final_quality = initial_quality - .1
             for z in xrange(0,1000):
-                v2ind = random.randint(0,frame.shape[0]-1)
-                vec2 = full_data[v2ind]
-                v2fs = frame["fs"][v2ind]
-                vec = alter(vec,vec2)
-                if i%100==0:
+                if i%100==0 or i==0:
+                    v2ind = random.randint(0,data.shape[0]-1)
+                    v2fname = data['fname'][v2ind]
+                    vec2, v2fs, v2enc = read_sound(v2fname)
                     feats = calc_features(vec,fs)
                     quality = clf.predict_proba(feats)[0,1]
-                    nearest_match, min_dist = find_nearest_match(vec, frame[good_names])
+                    nearest_match, min_dist = find_nearest_match(feats, data[good_names])
                     if min_dist>10 and abs(quality-final_quality)<=.1:
                         time = strftime("%m-%d-%Y-%H%M%S", gmtime())
                         fname = time+name
@@ -330,6 +331,7 @@ class EvolveMusic(Task):
                         fpath = os.path.abspath(os.path.join(dir_path,fname))
                         oggwrite(vec,fpath,fs,enc)
                         break
+                vec = alter(vec,vec2)
 
 def random_effect(vec,func):
     vec_len = len(vec)
