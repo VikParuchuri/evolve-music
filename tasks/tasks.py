@@ -22,6 +22,7 @@ from scikits.audiolab import oggread
 import random
 import math
 import operator
+from scipy.fftpack import dct
 
 import logging
 log = logging.getLogger(__name__)
@@ -39,8 +40,6 @@ def make_df(datalist, labels, name_prefix=""):
     df.columns = labels
     df.index = range(df.shape[0])
     return df
-
-row_types = ["id","info","start","play","sub","data"]
 
 class ProcessMusic(Task):
     data = Complex()
@@ -64,27 +63,38 @@ class ProcessMusic(Task):
         """
         d = []
         labels = []
-        for p in data:
-            data, fs, enc = oggread(p['newpath'])
-            upto = fs* settings.MUSIC_TIME_LIMIT
-            if data.shape[0]<upto:
-                continue
-            try:
-                if data.shape[1]!=2:
+        if not os.path.isfile(settings.FEATURE_PATH):
+            for (z,p) in enumerate(data):
+                log.info("On file {0}".format(z))
+                data, fs, enc = oggread(p['newpath'])
+                upto = fs* settings.MUSIC_TIME_LIMIT
+                if data.shape[0]<upto:
                     continue
-            except Exception:
-                log.error("Invalid dimension count. Do you have left and right channel audio?")
-                continue
-            data = data[0:upto,:]
-            try:
-                features = process_song(data,fs)
-            except Exception:
-                log.exception("Could not get features")
-                continue
-            d.append(features)
-            labels.append(p['type'])
-        frame = pd.DataFrame(d)
-        frame['labels']  = labels
+                try:
+                    if data.shape[1]!=2:
+                        continue
+                except Exception:
+                    log.error("Invalid dimension count. Do you have left and right channel audio?")
+                    continue
+                data = data[0:upto,:]
+                try:
+                    features = process_song(data,fs)
+                except Exception:
+                    log.exception("Could not get features")
+                    continue
+                d.append(features)
+                labels.append(p['type'])
+            frame = pd.DataFrame(d)
+            frame['labels']  = labels
+            label_dict = {
+                'classical' : 1,
+                'electronic' : 0
+            }
+            frame['label_code'] = [label_dict[i] for i in frame['labels']]
+            frame.to_csv(settings.FEATURE_PATH)
+        else:
+            frame = pd.read_csv(settings.FEATURE_PATH)
+
         return frame
 
 def calc_slope(x,y):
@@ -106,9 +116,54 @@ def calc_u(vec):
     fft = np.fft.fft(vec)
     return np.sum(np.multiply(fft,vec))/np.sum(vec)
 
+def calc_mfcc(fft):
+    ps = np.abs(fft) ** 2
+    fs = np.dot(ps, mel_filter(ps.shape[0]))
+    ls = np.log(fs)
+    ds = dct(ls, type=2)
+    return ds
+
+def mel_filter(blockSize):
+    numBands = 13
+    maxMel = int(freqToMel(24000))
+    minMel = int(freqToMel(10))
+
+    filterMatrix = np.zeros((numBands, blockSize))
+
+    melRange = np.array(xrange(numBands + 2))
+
+    melCenterFilters = melRange * (maxMel - minMel) / (numBands + 1) + minMel
+
+    aux = np.log(1 + 1000.0 / 700.0) / 1000.0
+    aux = (np.exp(melCenterFilters * aux) - 1) / 22050
+    aux = 0.5 + 700 * blockSize * aux
+    aux = np.floor(aux)  # Arredonda pra baixo
+    centerIndex = np.array(aux, int)  # Get int values
+
+    for i in xrange(numBands):
+        start, center, end = centerIndex[i:(i+3)]
+        k1 = np.float32(center - start)
+        k2 = np.float32(end - center)
+        up = (np.array(xrange(start, center)) - start) / k1
+        down = (end - np.array(xrange(center, end))) / k2
+
+        filterMatrix[i][start:center] = up
+        try:
+            filterMatrix[i][center:end] = down
+        except ValueError:
+            pass
+
+    return filterMatrix.transpose()
+
+def freqToMel(freq):
+    return 1127.01048 * math.log(1 + freq / 700.0)
+
+def melToFreq(freq):
+    return 700 * (math.exp(freq / 1127.01048 - 1))
+
 def calc_features(vec,freq):
     #bin count
-    bc = settings.MUSIC_TIME_LIMIT * 3
+    bc = settings.MUSIC_TIME_LIMIT
     bincount = list(range(bc))
     #framesize
     fsize = 512
@@ -121,6 +176,7 @@ def calc_features(vec,freq):
     sdev = np.std(vec)
     binwidth = len(vec)/bc
     bins = []
+
     for i in xrange(0,bc):
         bins.append(vec[(i*binwidth):(binwidth*i + binwidth)])
     peaks = [np.max(i) for i in bins]
@@ -131,6 +187,9 @@ def calc_features(vec,freq):
     bin_fft = []
     for i in xrange(0,bc):
         bin_fft.append(np.fft.fft(vec[(i*binwidth):(binwidth*i + binwidth)]))
+
+    mel = [list(calc_mfcc(j)) for (i,j) in enumerate(bin_fft) if i%3==0]
+    mels = list(chain.from_iterable(mel))
 
     cepstrums = [np.fft.ifft(np.log(np.abs(i))) for i in bin_fft]
     inter = [get_indicators(i) for i in cepstrums]
@@ -151,7 +210,7 @@ def calc_features(vec,freq):
     savss = calc_slope(bincount,avss)
     mavss = np.mean(avss)
 
-    return [m,sf,mx,mi,sdev,amin,smin,stmin,apeak,speak,stpeak,acep,scep,stcep,aacep,sscep,stsscep,zcc,zccn,spread,skewness,savss,mavss,[i[0] for (j,i) in enumerate(inter) if j%5==0]]
+    return [m,sf,mx,mi,sdev,amin,smin,stmin,apeak,speak,stpeak,acep,scep,stcep,aacep,sscep,stsscep,zcc,zccn,spread,skewness,savss,mavss] + mels + [i[0] for (j,i) in enumerate(inter) if j%5==0]
 
 def extract_features(sample,freq):
     left = calc_features(sample[:,0],freq)
@@ -188,17 +247,18 @@ class EvolveMusic(Task):
     category = RegistryCategories.preprocessors
     namespace = get_namespace(__module__)
     args = {
-        'non_predictors' : ["labels"]
+        'non_predictors' : ["labels","label_code"],
+        'target' : 'label_code'
     }
 
     def train(self,data,**kwargs):
         non_predictors = kwargs.get('non_predictors')
+        target = kwargs.get('target')
+
         alg = RandomForestTrain()
         good_names = [i for i in data.columns if i not in non_predictors]
 
-        clf = alg.train(data[good_names],data['labels'])
-
-        
+        clf = alg.train(data[good_names],data[target])
 
     def random_effect(self,vec,func):
         vec_len = len(vec)

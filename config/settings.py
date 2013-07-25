@@ -29,11 +29,14 @@ LOG_LEVEL = "DEBUG"
 MUSIC_PATH = "/media/vik/FreeAgent GoFlex Drive/Music/evolve"
 
 MUSIC_TIME_LIMIT = 30 #seconds
+ITER_COUNT = 1000
 
 #Used to save and retrieve workflows and other data
 DATA_PATH = os.path.abspath(os.path.join(PROJECT_PATH, "stored_data"))
 if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)
+
+FEATURE_PATH = os.path.abspath(os.path.join(DATA_PATH, "features.csv"))
 
 #Commands are discovered here, and tasks/inputs/formats are imported using only these modules
 INSTALLED_APPS = [
