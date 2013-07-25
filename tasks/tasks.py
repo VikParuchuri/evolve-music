@@ -23,6 +23,8 @@ import random
 import math
 import operator
 from scipy.fftpack import dct
+from scikits.audiolab import oggwrite
+from time import gmtime, strftime
 
 import logging
 log = logging.getLogger(__name__)
@@ -63,6 +65,9 @@ class ProcessMusic(Task):
         """
         d = []
         labels = []
+        encs = []
+        fss = []
+        fnames = []
         if not os.path.isfile(settings.FEATURE_PATH):
             for (z,p) in enumerate(data):
                 log.info("On file {0}".format(z))
@@ -88,8 +93,14 @@ class ProcessMusic(Task):
                     continue
                 d.append(features)
                 labels.append(p['type'])
+                fss.append(fs)
+                encs.append(enc)
+                fnames.append(p['newpath'])
             frame = pd.DataFrame(d)
             frame['labels']  = labels
+            frame['fs'] = fss
+            frame['enc'] = encs
+            frame['fname'] = fnames
             label_dict = {
                 'classical' : 1,
                 'electronic' : 0
@@ -214,7 +225,14 @@ def calc_features(vec,freq):
     savss = calc_slope(bincount,avss)
     mavss = np.mean(avss)
 
-    return [m,sf,mx,mi,sdev,amin,smin,stmin,apeak,speak,stpeak,acep,scep,stcep,aacep,sscep,stsscep,zcc,zccn,spread,skewness,savss,mavss] + mels + [i[0] for (j,i) in enumerate(inter) if j%5==0]
+    features = [m,sf,mx,mi,sdev,amin,smin,stmin,apeak,speak,stpeak,acep,scep,stcep,aacep,sscep,stsscep,zcc,zccn,spread,skewness,savss,mavss] + mels + [i[0] for (j,i) in enumerate(inter) if j%5==0]
+
+    for i in xrange(0,len(features)):
+        try:
+            features[i] = features[i].real
+        except Exception:
+            pass
+    return features
 
 def extract_features(sample,freq):
     left = calc_features(sample[:,0],freq)
@@ -245,13 +263,15 @@ class RandomForestTrain(Train):
 
 class EvolveMusic(Task):
     data = Complex()
+    clf = Complex()
+    importances = Complex()
 
     data_format = MusicFormats.dataframe
 
     category = RegistryCategories.preprocessors
     namespace = get_namespace(__module__)
     args = {
-        'non_predictors' : ["labels","label_code"],
+        'non_predictors' : ["labels","label_code","fs","enc","fname"],
         'target' : 'label_code'
     }
 
@@ -259,18 +279,40 @@ class EvolveMusic(Task):
         non_predictors = kwargs.get('non_predictors')
         target = kwargs.get('target')
 
+        data.index = range(data.shape[0])
+
         alg = RandomForestTrain()
         good_names = [i for i in data.columns if i not in non_predictors]
+        for c in good_names:
+            data[c] = data[c].astype(float)
 
-        clf = alg.train(data[good_names],data[target])
+        for c in good_names:
+            data[c] = data[c].real
+
+        self.clf = alg.train(np.asarray(data[good_names]),data[target],**alg.args)
+        self.importances = self.clf.feature_importances_
+
         for i in xrange(0,data.shape[0]):
             for z in xrange(0,1000):
                 v2ind = random.randint(0,data.shape[0])
-                vec = data[i,:]
-                vec2 = data[v2ind,:]
+                vec = np.copy(data.iloc[i,:][good_names])
+                label = data["labels"][i]
+                fs = data["fs"][i]
+                enc = data["enc"][i]
+                name = data["fname"].split("/")[-1]
+                vec2 = data.iloc[v2ind,:][good_names]
                 vec = self.alter(vec,vec2)
                 if i%100==0:
-                    quality = clf.predict_proba(vec)
+                    quality = self.clf.predict_proba(data.iloc[i,:][good_names])[0,1]
+                    nearest_match, min_dist = self.find_nearest_match(vec, data[good_names])
+                    if min_dist>10 and quality>.9:
+                        time = strftime("%m-%d-%Y-%H%M%S", gmtime())
+                        fname = time+name
+                        dir_path = settings.MUSIC_STORE_PATH
+                        if not os.path.isdir(dir_path):
+                            os.mkdir(dir_path)
+                        fpath = os.path.abspath(os.path.join(dir_path,fname))
+                        oggwrite(vec,fpath,fs,enc)
 
     def random_effect(self,vec,func):
         vec_len = len(vec)
@@ -312,3 +354,12 @@ class EvolveMusic(Task):
         else:
             vec = self.mix_random(vec,vec2)
         return vec
+
+    def find_nearest_match(self, features, matrix):
+        features = np.asarray(features)
+        distances = [self.euclidean(u, features) for u in matrix]
+        nearest_match = distances.index(min(distances))
+        return nearest_match, min(distances)
+
+    def euclidean(self, v1, v2):
+        return np.sqrt(np.sum(np.square(np.subtract(v1,v2))))

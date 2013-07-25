@@ -38,6 +38,8 @@ if not os.path.exists(DATA_PATH):
 
 FEATURE_PATH = os.path.abspath(os.path.join(DATA_PATH, "features.csv"))
 
+MUSIC_STORE_PATH = os.path.abspath(os.path.join(DATA_PATH, "generated"))
+
 #Commands are discovered here, and tasks/inputs/formats are imported using only these modules
 INSTALLED_APPS = [
     'evolve-music.inputs',
