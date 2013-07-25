@@ -303,35 +303,35 @@ class EvolveMusic(Task):
 
         for i in xrange(0,data.shape[0]):
             fname = data['fname'][i]
-            vec = read_sound(fname)
+            vec, fs, enc = read_sound(fname)
             label = data["labels"][i]
-            fs = data["fs"][i]
-            enc = data["enc"][i]
-            name = fname.split("/")[-1]
-            feats = calc_features(vec,fs)
-            initial_quality = clf.predict_proba(feats)[0,1]
-            if initial_quality<.5:
-                final_quality = initial_quality + .1
-            else:
-                final_quality = initial_quality - .1
-            for z in xrange(0,1000):
-                if i%100==0 or i==0:
-                    v2ind = random.randint(0,data.shape[0]-1)
-                    v2fname = data['fname'][v2ind]
-                    vec2, v2fs, v2enc = read_sound(v2fname)
-                    feats = calc_features(vec,fs)
-                    quality = clf.predict_proba(feats)[0,1]
-                    nearest_match, min_dist = find_nearest_match(feats, data[good_names])
-                    if min_dist>10 and abs(quality-final_quality)<=.1:
-                        time = strftime("%m-%d-%Y-%H%M%S", gmtime())
-                        fname = time+name
-                        dir_path = settings.MUSIC_STORE_PATH
-                        if not os.path.isdir(dir_path):
-                            os.mkdir(dir_path)
-                        fpath = os.path.abspath(os.path.join(dir_path,fname))
-                        oggwrite(vec,fpath,fs,enc)
-                        break
-                vec = alter(vec,vec2)
+            if label=="classical":
+                name = fname.split("/")[-1]
+                feats = process_song(vec,fs)
+                initial_quality = clf.predict_proba(feats)[0,1]
+                if initial_quality<.5:
+                    final_quality = initial_quality + .1
+                else:
+                    final_quality = initial_quality - .1
+                for z in xrange(0,1000):
+                    if z%100==0 or z==0:
+                        print("Song {0} iteration {1}".format(i,z))
+                        v2ind = random.randint(0,data.shape[0]-1)
+                        v2fname = data['fname'][v2ind]
+                        vec2, v2fs, v2enc = read_sound(v2fname)
+                        feats = process_song(vec,fs)
+                        quality = clf.predict_proba(feats)[0,1]
+                        #nearest_match, min_dist = find_nearest_match(feats, data[good_names])
+                        if abs(quality-final_quality)<=.1 and z!=0:
+                            time = strftime("%m-%d-%Y-%H%M%S", gmtime())
+                            fname = time+name
+                            dir_path = settings.MUSIC_STORE_PATH
+                            if not os.path.isdir(dir_path):
+                                os.mkdir(dir_path)
+                            fpath = os.path.abspath(os.path.join(dir_path,fname))
+                            oggwrite(vec,fpath,fs,enc)
+                            break
+                    vec = alter(vec,vec2)
 
 def random_effect(vec,func):
     vec_len = len(vec)
@@ -369,7 +369,8 @@ def alter(vec,vec2):
     elif op==1:
         vec = add_random(vec)
     elif op==2:
-        vec = multiply_random(vec)
+        #vec = multiply_random(vec)
+        pass
     else:
         vec = mix_random(vec,vec2)
     return vec
