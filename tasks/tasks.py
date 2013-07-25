@@ -19,7 +19,9 @@ import sqlite3
 from pandas.io import sql
 from collections import namedtuple
 from scikits.audiolab import oggread
-
+import random
+import math
+import operator
 
 import logging
 log = logging.getLogger(__name__)
@@ -164,3 +166,69 @@ def process_song(vec,f):
         return None
 
     return features
+
+class RandomForestTrain(Train):
+    """
+    A class to train a random forest
+    """
+    colnames = List()
+    clf = Complex()
+    category = RegistryCategories.algorithms
+    namespace = get_namespace(__module__)
+    algorithm = RandomForestClassifier
+    args = {'n_estimators' : 300, 'min_samples_leaf' : 4, 'compute_importances' : True}
+
+    help_text = "Train and predict with Random Forest."
+
+class EvolveMusic(Task):
+    data = Complex()
+
+    data_format = MusicFormats.dataframe
+
+    category = RegistryCategories.preprocessors
+    namespace = get_namespace(__module__)
+    args = {
+        'non_predictors' : ["labels"]
+    }
+
+    def train(self,data,**kwargs):
+        non_predictors = kwargs.get('non_predictors')
+        alg = RandomForestTrain()
+        good_names = [i for i in data.columns if i not in non_predictors]
+
+        clf = alg.train(data[good_names],data['labels'])
+
+        
+
+    def random_effect(self,vec,func):
+        vec_len = len(vec)
+        for i in xrange(1,10):
+            randint = random.randint(0,vec_len)
+            effect_area = math.floor((random.random()+.3)*100)
+            if randint + vec_len/effect_area > vec_len:
+                randint = vec_len - vec_len/effect_area
+            vec[randint:(randint+vec_len/effect_area)]= func(vec[randint:(randint+vec_len/effect_area)],random.random())
+        return vec
+
+    def subtract_random(self,vec):
+        return self.random_effect(vec,operator.sub)
+
+    def multiply_random(self,vec):
+        return self.random_effect(vec,operator.mul)
+
+    def add_random(self,vec):
+        return self.random_effect(vec,operator.add)
+
+    def mix_random(self,vec,d):
+        #Mix two songs randomly
+        pass
+
+    def alter(self,vec):
+        op = random.randint(0,4)
+        if op==0:
+            vec = self.subtract_random(vec)
+        elif op==1:
+            vec = self.add_random(vec)
+        elif op==2:
+            vec = self.multiply_random(vec)
+        return vec
