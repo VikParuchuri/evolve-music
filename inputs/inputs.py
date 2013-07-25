@@ -16,6 +16,7 @@ from pandas.io import sql
 import sqlite3
 import json
 import requests
+import subprocess
 
 log = logging.getLogger(__name__)
 
@@ -60,5 +61,18 @@ class MusicInput(BaseInput):
                 fpaths.append({'type' : m['ltype'], 'path' : fpath})
             except Exception:
                 log.exception("Could not get music file.")
+
+        for p in fpaths:
+            newfile = p['path'][:-4] + ".ogg"
+            if not os.path.isfile(newfile):
+                frommp3 = subprocess.Popen(['mpg123', '-w', '-', p['path']], stdout=subprocess.PIPE)
+                toogg = subprocess.Popen(['oggenc', '-'], stdin=frommp3.stdout, stdout=subprocess.PIPE)
+                with open(newfile, 'wb') as outfile:
+                    while True:
+                        data = toogg.stdout.read(1024 * 100)
+                        if not data:
+                            break
+                        outfile.write(data)
+            p['newpath'] = newfile
 
         self.data = fpaths

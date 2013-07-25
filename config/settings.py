@@ -28,6 +28,8 @@ LOG_LEVEL = "DEBUG"
 
 MUSIC_PATH = "/media/vik/FreeAgent GoFlex Drive/Music/evolve"
 
+MUSIC_TIME_LIMIT = 30 #seconds
+
 #Used to save and retrieve workflows and other data
 DATA_PATH = os.path.abspath(os.path.join(PROJECT_PATH, "stored_data"))
 if not os.path.exists(DATA_PATH):
