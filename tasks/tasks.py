@@ -259,6 +259,14 @@ class EvolveMusic(Task):
         good_names = [i for i in data.columns if i not in non_predictors]
 
         clf = alg.train(data[good_names],data[target])
+        for i in xrange(0,data.shape[0]):
+            for z in xrange(0,1000):
+                v2ind = random.randint(0,data.shape[0])
+                vec = data[i,:]
+                vec2 = data[v2ind,:]
+                vec = self.alter(vec,vec2)
+                if i%100==0:
+                    quality = clf.predict_proba(vec)
 
     def random_effect(self,vec,func):
         vec_len = len(vec)
@@ -279,16 +287,24 @@ class EvolveMusic(Task):
     def add_random(self,vec):
         return self.random_effect(vec,operator.add)
 
-    def mix_random(self,vec,d):
-        #Mix two songs randomly
-        pass
+    def mix_random(self,vec,vec2):
+        vec_len = len(vec)
+        for i in xrange(1,10):
+            randint = random.randint(0,vec_len)
+            effect_area = math.floor((random.random()+.3)*100)
+            if randint + vec_len/effect_area > vec_len:
+                randint = vec_len - vec_len/effect_area
+            vec[randint:(randint+vec_len/effect_area)]+=vec2[randint:(randint+vec_len/effect_area)]
+        return vec
 
-    def alter(self,vec):
-        op = random.randint(0,4)
+    def alter(self,vec,vec2):
+        op = random.randint(0,3)
         if op==0:
             vec = self.subtract_random(vec)
         elif op==1:
             vec = self.add_random(vec)
         elif op==2:
             vec = self.multiply_random(vec)
+        else:
+            vec = self.mix_random(vec,vec2)
         return vec
