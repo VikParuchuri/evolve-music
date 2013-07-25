@@ -68,6 +68,7 @@ class ProcessMusic(Task):
         encs = []
         fss = []
         fnames = []
+        full_data = []
         if not os.path.isfile(settings.FEATURE_PATH):
             for (z,p) in enumerate(data):
                 log.info("On file {0}".format(z))
@@ -96,6 +97,7 @@ class ProcessMusic(Task):
                 fss.append(fs)
                 encs.append(enc)
                 fnames.append(p['newpath'])
+                full_data.append(data)
             frame = pd.DataFrame(d)
             frame['labels']  = labels
             frame['fs'] = fss
@@ -110,7 +112,10 @@ class ProcessMusic(Task):
         else:
             frame = pd.read_csv(settings.FEATURE_PATH)
 
-        return frame
+        return {
+            'frame' : frame,
+            'full_data' : full_data
+        }
 
 def calc_slope(x,y):
     x_mean = np.mean(x)
@@ -278,34 +283,45 @@ class EvolveMusic(Task):
     def train(self,data,**kwargs):
         non_predictors = kwargs.get('non_predictors')
         target = kwargs.get('target')
+        
+        frame = data['frame']
+        full_data = data['full_data']
 
-        data.index = range(data.shape[0])
+        frame.index = range(frame.shape[0])
 
         alg = RandomForestTrain()
-        good_names = [i for i in data.columns if i not in non_predictors]
+        good_names = [i for i in frame.columns if i not in non_predictors]
         for c in good_names:
-            data[c] = data[c].astype(float)
+            frame[c] = frame[c].astype(float)
 
         for c in good_names:
-            data[c] = data[c].real
+            frame[c] = frame[c].real
 
-        self.clf = alg.train(np.asarray(data[good_names]),data[target],**alg.args)
-        self.importances = self.clf.feature_importances_
+        clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
+        importances = clf.feature_importances_
 
-        for i in xrange(0,data.shape[0]):
+        for i in xrange(0,frame.shape[0]):
+            vec = np.copy(full_data[i])
+            label = frame["labels"][i]
+            fs = frame["fs"][i]
+            enc = frame["enc"][i]
+            name = frame["fname"][i].split("/")[-1]
+            feats = calc_features(vec,fs)
+            initial_quality = clf.predict_proba(feats)[0,1]
+            if initial_quality<.5:
+                final_quality = initial_quality + .1
+            else:
+                final_quality = initial_quality - .1
             for z in xrange(0,1000):
-                v2ind = random.randint(0,data.shape[0])
-                vec = np.copy(data.iloc[i,:][good_names])
-                label = data["labels"][i]
-                fs = data["fs"][i]
-                enc = data["enc"][i]
-                name = data["fname"].split("/")[-1]
-                vec2 = data.iloc[v2ind,:][good_names]
-                vec = self.alter(vec,vec2)
+                v2ind = random.randint(0,frame.shape[0]-1)
+                vec2 = full_data[v2ind]
+                v2fs = frame["fs"][v2ind]
+                vec = alter(vec,vec2)
                 if i%100==0:
-                    quality = self.clf.predict_proba(data.iloc[i,:][good_names])[0,1]
-                    nearest_match, min_dist = self.find_nearest_match(vec, data[good_names])
-                    if min_dist>10 and quality>.9:
+                    feats = calc_features(vec,fs)
+                    quality = clf.predict_proba(feats)[0,1]
+                    nearest_match, min_dist = find_nearest_match(vec, frame[good_names])
+                    if min_dist>10 and abs(quality-final_quality)<=.1:
                         time = strftime("%m-%d-%Y-%H%M%S", gmtime())
                         fname = time+name
                         dir_path = settings.MUSIC_STORE_PATH
@@ -313,53 +329,54 @@ class EvolveMusic(Task):
                             os.mkdir(dir_path)
                         fpath = os.path.abspath(os.path.join(dir_path,fname))
                         oggwrite(vec,fpath,fs,enc)
+                        break
 
-    def random_effect(self,vec,func):
-        vec_len = len(vec)
-        for i in xrange(1,10):
-            randint = random.randint(0,vec_len)
-            effect_area = math.floor((random.random()+.3)*100)
-            if randint + vec_len/effect_area > vec_len:
-                randint = vec_len - vec_len/effect_area
-            vec[randint:(randint+vec_len/effect_area)]= func(vec[randint:(randint+vec_len/effect_area)],random.random())
-        return vec
+def random_effect(vec,func):
+    vec_len = len(vec)
+    for i in xrange(1,10):
+        randint = random.randint(0,vec_len)
+        effect_area = math.floor((random.random()+.3)*100)
+        if randint + vec_len/effect_area > vec_len:
+            randint = vec_len - vec_len/effect_area
+        vec[randint:(randint+vec_len/effect_area)]= func(vec[randint:(randint+vec_len/effect_area)],random.random())
+    return vec
 
-    def subtract_random(self,vec):
-        return self.random_effect(vec,operator.sub)
+def subtract_random(vec):
+    return random_effect(vec,operator.sub)
 
-    def multiply_random(self,vec):
-        return self.random_effect(vec,operator.mul)
+def multiply_random(vec):
+    return random_effect(vec,operator.mul)
 
-    def add_random(self,vec):
-        return self.random_effect(vec,operator.add)
+def add_random(vec):
+    return random_effect(vec,operator.add)
 
-    def mix_random(self,vec,vec2):
-        vec_len = len(vec)
-        for i in xrange(1,10):
-            randint = random.randint(0,vec_len)
-            effect_area = math.floor((random.random()+.3)*100)
-            if randint + vec_len/effect_area > vec_len:
-                randint = vec_len - vec_len/effect_area
-            vec[randint:(randint+vec_len/effect_area)]+=vec2[randint:(randint+vec_len/effect_area)]
-        return vec
+def mix_random(vec,vec2):
+    vec_len = len(vec)
+    for i in xrange(1,10):
+        randint = random.randint(0,vec_len)
+        effect_area = math.floor((random.random()+.3)*100)
+        if randint + vec_len/effect_area > vec_len:
+            randint = vec_len - vec_len/effect_area
+        vec[randint:(randint+vec_len/effect_area)]+=vec2[randint:(randint+vec_len/effect_area)]
+    return vec
 
-    def alter(self,vec,vec2):
-        op = random.randint(0,3)
-        if op==0:
-            vec = self.subtract_random(vec)
-        elif op==1:
-            vec = self.add_random(vec)
-        elif op==2:
-            vec = self.multiply_random(vec)
-        else:
-            vec = self.mix_random(vec,vec2)
-        return vec
+def alter(vec,vec2):
+    op = random.randint(0,3)
+    if op==0:
+        vec = subtract_random(vec)
+    elif op==1:
+        vec = add_random(vec)
+    elif op==2:
+        vec = multiply_random(vec)
+    else:
+        vec = mix_random(vec,vec2)
+    return vec
 
-    def find_nearest_match(self, features, matrix):
-        features = np.asarray(features)
-        distances = [self.euclidean(u, features) for u in matrix]
-        nearest_match = distances.index(min(distances))
-        return nearest_match, min(distances)
+def find_nearest_match(features, matrix):
+    features = np.asarray(features)
+    distances = [euclidean(u, features) for u in matrix]
+    nearest_match = distances.index(min(distances))
+    return nearest_match, min(distances)
 
-    def euclidean(self, v1, v2):
-        return np.sqrt(np.sum(np.square(np.subtract(v1,v2))))
+def euclidean(v1, v2):
+    return np.sqrt(np.sum(np.square(np.subtract(v1,v2))))
