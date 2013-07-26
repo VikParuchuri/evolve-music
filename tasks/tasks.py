@@ -398,7 +398,7 @@ def find_quality(vec,fs,clf):
 def splice(vec,vec2,fs1,fs2,clf):
     note = extract_note(vec2,fs2,clf)
     vec_len = len(vec)
-    insertions = 3
+    insertions = 10
     insertion_gap = math.floor(vec_len/insertions)
     insert_point = random.randint(0,insertion_gap-1)
     for i in xrange(0,insertions):
