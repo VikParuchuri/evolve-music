@@ -37,6 +37,7 @@ if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)
 
 FEATURE_PATH = os.path.abspath(os.path.join(DATA_PATH, "features.csv"))
+VIZ_PATH = os.path.abspath(os.path.join(DATA_PATH, "visualize.csv"))
 
 MUSIC_STORE_PATH = os.path.abspath(os.path.join(DATA_PATH, "generated"))
 

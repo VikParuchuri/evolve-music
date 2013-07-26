@@ -315,7 +315,7 @@ class EvolveMusic(Task):
                 headers = "song_index,iteration,quality,distance,splice_song_index,splice_song"
                 v2s = [headers,"{0},{1},{2},{3},{4},{5}".format(i,-1,initial_quality,0,0,"N/A")]
                 print(headers)
-                for z in xrange(0,100):
+                for z in xrange(0,10):
                     if z%10==0 or z==0:
                         v2ind = random.randint(0,data.shape[0]-1)
                         v2fname = data['fname'][v2ind]
@@ -420,3 +420,31 @@ def find_nearest_match(features, matrix):
 
 def euclidean(v1, v2):
     return np.sqrt(np.sum(np.square(np.subtract(v1,v2)/(v2+.1))))
+
+
+def get_matrix():
+    non_predictors = ["labels","label_code","fs","enc","fname","Unnamed: 0"]
+    frame = pd.read_csv(settings.FEATURE_PATH)
+    good_names = [i for i in frame.columns if i not in non_predictors]
+    data = frame[good_names]
+    data['labels'] = frame['labels']
+    folder_path = os.path.abspath(os.path.join(settings.DATA_PATH,"highlights"))
+    ogg_files = [os.path.abspath(os.path.join(folder_path,f)) for f in os.listdir(folder_path) if f.endswith(".ogg")]
+    d = []
+    for o in ogg_files:
+        try:
+            data , fs, enc = read_sound(o)
+        except Exception:
+            continue
+        try:
+            features = process_song(data,fs)
+        except Exception:
+            log.exception("Could not get features")
+            continue
+        d.append(features)
+    gframe = pd.DataFrame(d)
+    gframe['labels']  = ["generated" for i in xrange(0,gframe.shape[0])]
+    gframe.columns = list(xrange(0,gframe.shape[1]))
+    frame.columns = list(xrange(0,frame.shape[1]))
+    full_frame = pd.concat([frame,gframe],axis=0)
+    full_frame.to_csv(settings.VIZ_PATH)
