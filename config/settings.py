@@ -36,8 +36,12 @@ DATA_PATH = os.path.abspath(os.path.join(PROJECT_PATH, "stored_data"))
 if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)
 
+MIDI_PATH = os.path.abspath(os.path.join(DATA_PATH,"midi"))
+
 FEATURE_PATH = os.path.abspath(os.path.join(DATA_PATH, "features.csv"))
 VIZ_PATH = os.path.abspath(os.path.join(DATA_PATH, "visualize.csv"))
+
+SOUNDFONT_PATH = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
 MUSIC_STORE_PATH = os.path.abspath(os.path.join(DATA_PATH, "generated"))
 

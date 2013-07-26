@@ -24,6 +24,8 @@ import operator
 from scipy.fftpack import dct
 from scikits.audiolab import oggwrite, play, oggread
 from time import gmtime, strftime
+import subprocess
+from midiutil.MidiFile import MIDIFile
 
 import logging
 log = logging.getLogger(__name__)
@@ -42,10 +44,10 @@ def make_df(datalist, labels, name_prefix=""):
     df.index = range(df.shape[0])
     return df
 
-def read_sound(fpath):
+def read_sound(fpath, limit = settings.MUSIC_TIME_LIMIT):
     try:
         data, fs, enc = oggread(fpath)
-        upto = fs* settings.MUSIC_TIME_LIMIT
+        upto = fs* limit
     except IOError:
         log.exception("Could not read file")
         raise IOError
@@ -448,3 +450,61 @@ def get_matrix():
     frame.columns = list(xrange(0,frame.shape[1]))
     full_frame = pd.concat([frame,gframe],axis=0)
     full_frame.to_csv(settings.VIZ_PATH)
+
+def generate_note(mfile):
+    generate_midi(mfile)
+    ofile = convert_to_ogg(mfile)
+    try:
+        data, fs, enc = oggread(ofile)
+    except Exception:
+        log.exception("Could not read sound file.")
+        raise IOError
+    return data, fs, enc
+
+def convert_to_ogg(mfile):
+    file_end = mfile.split("/")[-1].split(".")[0]
+    oggfile = file_end + ".ogg"
+    wavfile = file_end + ".wav"
+    oggpath = os.path.abspath(os.path.join(settings.MIDI_PATH,oggfile))
+    wavpath = os.path.abspath(os.path.join(settings.MIDI_PATH,wavfile))
+
+    subprocess.call(['fluidsynth', '-i','-n', '-F', wavpath, settings.SOUNDFONT_PATH, mfile])
+    subprocess.call(['oggenc', wavpath])
+    return oggpath
+
+def add_track(midi,track,length,time=0,pitch_min=0,pitch_max=127):
+    tempo = random.randint(30,480)
+
+    beats_per_second = tempo/60
+    tempo = int(math.floor(beats_per_second)*60)
+    track_length = int(length * math.floor(beats_per_second))
+    midi.addTrackName(track,time,"Sample Track")
+    midi.addTempo(track,time,tempo)
+    # Add a note. addNote expects the following information:
+    for i in xrange(0,track_length):
+        track = 0
+        channel = 0
+        pitch = 60 + i
+        time = i
+        duration = 1
+        volume = 100
+        if pitch>pitch_max:
+            pitch = pitch_max
+        if pitch<pitch_min:
+            pitch = pitch_min
+
+        # Now add the note.
+        midi.addNote(track,channel,pitch,time,duration,volume)
+    return midi
+
+
+def generate_midi(filename,length=60):
+    track_count = random.randint(1,3)
+    midi = MIDIFile(track_count)
+
+    for i in xrange(0,track_count):
+        midi = add_track(midi,i,length)
+
+    binfile = open(filename, 'wb')
+    midi.writeFile(binfile)
+    binfile.close()
