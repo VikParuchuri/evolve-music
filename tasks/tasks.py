@@ -18,12 +18,11 @@ import random
 import sqlite3
 from pandas.io import sql
 from collections import namedtuple
-from scikits.audiolab import oggread
 import random
 import math
 import operator
 from scipy.fftpack import dct
-from scikits.audiolab import oggwrite
+from scikits.audiolab import oggwrite, play, oggread
 from time import gmtime, strftime
 
 import logging
@@ -280,13 +279,13 @@ class EvolveMusic(Task):
     category = RegistryCategories.preprocessors
     namespace = get_namespace(__module__)
     args = {
-        'non_predictors' : ["labels","label_code","fs","enc","fname"],
-        'target' : 'label_code'
+        'non_predictors' : ["labels","label_code","fs","enc","fname","Unnamed: 0"],
+        'target_var' : 'label_code',
     }
 
-    def train(self,data,**kwargs):
+    def train(self,data,target, **kwargs):
         non_predictors = kwargs.get('non_predictors')
-        target = kwargs.get('target')
+        target = kwargs.get('target_var')
 
         data.index = range(data.shape[0])
 
@@ -301,37 +300,54 @@ class EvolveMusic(Task):
         clf = alg.train(np.asarray(data[good_names]),data[target],**alg.args)
         importances = clf.feature_importances_
 
+        counter = 0
         for i in xrange(0,data.shape[0]):
             fname = data['fname'][i]
             vec, fs, enc = read_sound(fname)
             label = data["labels"][i]
+            if counter>10:
+                break
             if label=="classical":
+                counter+=1
                 name = fname.split("/")[-1]
                 feats = process_song(vec,fs)
                 initial_quality = clf.predict_proba(feats)[0,1]
-                if initial_quality<.5:
-                    final_quality = initial_quality + .1
-                else:
-                    final_quality = initial_quality - .1
-                for z in xrange(0,1000):
-                    if z%100==0 or z==0:
-                        print("Song {0} iteration {1}".format(i,z))
+                headers = "song_index,iteration,quality,distance,splice_song_index,splice_song"
+                v2s = [headers,"{0},{1},{2},{3},{4},{5}".format(i,-1,initial_quality,0,0,"N/A")]
+                print(headers)
+                for z in xrange(0,100):
+                    if z%10==0 or z==0:
                         v2ind = random.randint(0,data.shape[0]-1)
                         v2fname = data['fname'][v2ind]
                         vec2, v2fs, v2enc = read_sound(v2fname)
                         feats = process_song(vec,fs)
                         quality = clf.predict_proba(feats)[0,1]
-                        #nearest_match, min_dist = find_nearest_match(feats, data[good_names])
-                        if abs(quality-final_quality)<=.1 and z!=0:
-                            time = strftime("%m-%d-%Y-%H%M%S", gmtime())
-                            fname = time+name
-                            dir_path = settings.MUSIC_STORE_PATH
-                            if not os.path.isdir(dir_path):
-                                os.mkdir(dir_path)
-                            fpath = os.path.abspath(os.path.join(dir_path,fname))
-                            oggwrite(vec,fpath,fs,enc)
-                            break
-                    vec = alter(vec,vec2)
+                        nearest_match, min_dist = find_nearest_match(feats, data[good_names])
+                        descriptor = "{0},{1},{2},{3},{4},{5}".format(i,z,quality,min_dist,v2ind,v2fname.split("/")[-1])
+                        v2s.append(descriptor)
+                        print(descriptor)
+                        if min_dist>.35 and (abs(quality-0)<=.1 or abs(1-quality)<=.1) and z!=0:
+                            write_file(name,vec,fs,enc,v2s)
+                    vec = alter(vec,vec2,fs,v2fs,clf)
+                write_file(name,vec,fs,enc,v2s)
+
+def open_song(i,data):
+    fname = data['fname'][i]
+    d, fs, enc = read_sound(fname)
+    return d
+
+def write_file(name,vec,fs,enc,v2s):
+    time = strftime("%m-%d-%Y-%H%M%S", gmtime())
+    fname = time+name
+    dir_path = settings.MUSIC_STORE_PATH
+    if not os.path.isdir(dir_path):
+        os.mkdir(dir_path)
+    fpath = os.path.abspath(os.path.join(dir_path,fname))
+    oggwrite(vec,fpath,fs,enc)
+    desc_path = os.path.abspath(os.path.join(dir_path,time + "desc.txt"))
+    dfile = open(desc_path,'wb')
+    for item in v2s:
+        dfile.write("{0}\n".format(item))
 
 def random_effect(vec,func):
     vec_len = len(vec)
@@ -343,15 +359,6 @@ def random_effect(vec,func):
         vec[randint:(randint+vec_len/effect_area)]= func(vec[randint:(randint+vec_len/effect_area)],random.random())
     return vec
 
-def subtract_random(vec):
-    return random_effect(vec,operator.sub)
-
-def multiply_random(vec):
-    return random_effect(vec,operator.mul)
-
-def add_random(vec):
-    return random_effect(vec,operator.add)
-
 def mix_random(vec,vec2):
     vec_len = len(vec)
     for i in xrange(1,10):
@@ -362,24 +369,54 @@ def mix_random(vec,vec2):
         vec[randint:(randint+vec_len/effect_area)]+=vec2[randint:(randint+vec_len/effect_area)]
     return vec
 
-def alter(vec,vec2):
-    op = random.randint(0,3)
-    if op==0:
-        vec = subtract_random(vec)
-    elif op==1:
-        vec = add_random(vec)
-    elif op==2:
-        #vec = multiply_random(vec)
-        pass
-    else:
-        vec = mix_random(vec,vec2)
+def extract_note(vec,fs,clf):
+    quality = .5
+    best_note = None
+    best_quality = .5
+    counter=0
+    note = None
+    timeslice = 1
+    while abs(quality-round(quality,0))>.1 and counter<30:
+        counter+=1
+        note_start = random.randint(0,len(vec)-1)
+        if note_start + timeslice*fs > len(vec)-1:
+            note_start = len(vec) - 1 - timeslice*fs
+        note = vec[note_start:(timeslice*fs + note_start)]
+        quality = find_quality(note,fs,clf)
+        if quality<best_quality:
+            best_note = note
+            best_quality = quality
+    if note is None:
+        note = best_note
+    return note
+
+def find_quality(vec,fs,clf):
+    feats = extract_features(vec,fs)
+    quality = clf.predict_proba(feats)[0,1]
+    return quality
+
+def splice(vec,vec2,fs1,fs2,clf):
+    note = extract_note(vec2,fs2,clf)
+    vec_len = len(vec)
+    insertions = 3
+    insertion_gap = math.floor(vec_len/insertions)
+    insert_point = random.randint(0,insertion_gap-1)
+    for i in xrange(0,insertions):
+        if int(insert_point + len(note)) < len(vec):
+            vec[insert_point:int(insert_point + len(note))]=note
+        insert_point+=insertion_gap
+    return vec
+
+def alter(vec,vec2,fs1,fs2,clf):
+    vec = splice(vec,vec2,fs1,fs2,clf)
     return vec
 
 def find_nearest_match(features, matrix):
     features = np.asarray(features)
+    matrix = np.asarray(matrix)
     distances = [euclidean(u, features) for u in matrix]
     nearest_match = distances.index(min(distances))
-    return nearest_match, min(distances)
+    return nearest_match, min(distances)/len(features)
 
 def euclidean(v1, v2):
-    return np.sqrt(np.sum(np.square(np.subtract(v1,v2))))
+    return np.sqrt(np.sum(np.square(np.subtract(v1,v2)/(v2+.1))))
