@@ -683,9 +683,13 @@ def generate_tempo_track(tempos,length):
     track.append(midi.EndOfTrackEvent())
     return track
 
-def evaluate_midi_quality(pattern,clf):
-    midi_path = os.path.abspath(os.path.join(settings.MIDI_STORE_PATH,"tmp.mid"))
+def write_midi_to_file(pattern,name="tmp.mid"):
+    midi_path = os.path.abspath(os.path.join(settings.MIDI_STORE_PATH,name))
     midi.write_midifile(midi_path,pattern)
+    return midi_path
+
+def evaluate_midi_quality(pattern,clf):
+    midi_path = write_midi_to_file(pattern)
     oggpath = convert_to_ogg(midi_path)
     data, fs, enc = oggread(oggpath)
     features = process_song(data,fs)
