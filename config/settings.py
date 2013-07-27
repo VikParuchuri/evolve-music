@@ -28,6 +28,8 @@ LOG_LEVEL = "DEBUG"
 
 MUSIC_PATH = "/media/vik/FreeAgent GoFlex Drive/Music/evolve"
 
+MIDI_MUSIC_PATH = "/media/vik/FreeAgent GoFlex Drive/Music/evolve/midi"
+
 MUSIC_TIME_LIMIT = 30 #seconds
 ITER_COUNT = 1000
 
@@ -36,9 +38,10 @@ DATA_PATH = os.path.abspath(os.path.join(PROJECT_PATH, "stored_data"))
 if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)
 
-MIDI_PATH = os.path.abspath(os.path.join(DATA_PATH,"midi"))
+MIDI_PATH = "/media/vik/FreeAgent GoFlex Drive/Music/evolve/processed_midi"
 
 FEATURE_PATH = os.path.abspath(os.path.join(DATA_PATH, "features.csv"))
+MIDI_FEATURE_PATH = os.path.abspath(os.path.join(DATA_PATH, "midi_features.csv"))
 VIZ_PATH = os.path.abspath(os.path.join(DATA_PATH, "visualize.csv"))
 
 SOUNDFONT_PATH = "/usr/share/sounds/sf2/FluidR3_GM.sf2"

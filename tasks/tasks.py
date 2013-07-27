@@ -528,3 +528,195 @@ def generate_midi(filename,length=60):
     binfile = open(filename, 'wb')
     midi.writeFile(binfile)
     binfile.close()
+
+
+class ProcessMidi(Task):
+    data = Complex()
+
+    data_format = MusicFormats.dataframe
+
+    category = RegistryCategories.preprocessors
+    namespace = get_namespace(__module__)
+
+    help_text = "Process midi files."
+
+    def train(self, data, target, **kwargs):
+        """
+        Used in the training phase.  Override.
+        """
+        self.data = self.predict(data, **kwargs)
+
+    def predict(self, data, **kwargs):
+        """
+        Used in the predict phase, after training.  Override
+        """
+        d = []
+        labels = []
+        encs = []
+        fss = []
+        fnames = []
+        if not os.path.isfile(settings.MIDI_FEATURE_PATH):
+            for (z,p) in enumerate(data):
+                log.info("On file {0}".format(z))
+                try:
+                    data , fs, enc = read_sound(p['newpath'])
+                except Exception:
+                    continue
+                try:
+                    features = process_song(data,fs)
+                except Exception:
+                    log.exception("Could not get features")
+                    continue
+                d.append(features)
+                labels.append(p['type'])
+                fss.append(fs)
+                encs.append(enc)
+                fnames.append(p['newpath'])
+            frame = pd.DataFrame(d)
+            frame['labels']  = labels
+            frame['fs'] = fss
+            frame['enc'] = encs
+            frame['fname'] = fnames
+            label_dict = {
+                'classical' : 1,
+                'modern' : 0
+            }
+            frame['label_code'] = [label_dict[i] for i in frame['labels']]
+            frame.to_csv(settings.MIDI_FEATURE_PATH)
+        else:
+            frame = pd.read_csv(settings.MIDI_FEATURE_PATH)
+
+        return frame
+
+def process_midifile(m,notes,tempos):
+    for track in m:
+        for e in track:
+            if isinstance(e,midi.events.NoteOnEvent):
+                channel = e.channel
+                pitch, velocity = e.data
+                tick = e.tick
+                if channel not in notes:
+                    notes[channel] = {'pitch' : [], 'velocity' : [] ,'tick' : []}
+                notes[channel]['pitch'].append(pitch)
+                notes[channel]['velocity'].append(velocity)
+                notes[channel]['tick'].append(tick)
+            elif isinstance(e,midi.events.SetTempoEvent):
+                tick = e.tick
+                tick = round(tick/10)*10
+                mpqn = e.mpqn
+                tempos['tick'].append(tick)
+                tempos['mpqn'].append(mpqn)
+        tempos['mpqn'].append(0)
+        tempos['tick'].append(0)
+    return notes, tempos
+
+def generate_matrix(seq):
+    seq = round(seq/5)*5
+    unique_seq = list(set(seq))
+    unique_seq.sort()
+    mat = np.zeros(len(unique_seq),len(unique_seq))
+    for i in xrange(0,len(seq)-1):
+        i_ind = unique_seq.index(seq[i])
+        i_1_ind = unique_seq.index(seq[i+1])
+        mat[i_ind,i_1_ind] = mat[i_ind,i_1_ind] + 1
+    for i in xrange(0,mat.shape[0]):
+        mat[i,:] = mat[i,:]/np.sum(mat[i,:])
+    return {'mat': mat, 'inds' : unique_seq}
+
+def generate_matrices(notes,tempos):
+    tm = {}
+    nm = {}
+    tm['tick'] = generate_matrix(tempos['tick'])
+    tm['mpqn'] = generate_matrix(tempos['mpqn'])
+
+    for k in notes:
+        nm[k] = {}
+        for sk in notes[k]:
+            nm[k][sk] = generate_matrix(notes[k][sk])
+    return nm, tm
+
+def pick_proba(vec):
+    choices = []
+    for i in xrange(0,len(vec)):
+        choices += [i] * int(math.floor(vec[i]*100))
+    choice = random.choice(choices)
+    return choice
+
+def generate_markov_seq(m,inds,length):
+    start = random.choice(inds)
+    seq = []
+    seq.append(start)
+    for i in xrange(1,length):
+        ind = inds.index(seq[i-1])
+        sind = pick_proba(m[ind,:])
+        seq.append(inds[sind])
+    return seq
+
+def generate_audio_track(notes,length):
+    channel = random.choice(notes.keys())
+    pitch = generate_markov_seq(notes[channel]['pitch']['mat'],notes[channel]['pitch']['inds'],length)
+    velocity = generate_markov_seq(notes[channel]['velocity']['mat'],notes[channel]['velocity']['inds'],length)
+    tick = generate_markov_seq(notes[channel]['tick']['mat'],notes[channel]['tick']['inds'],length)
+    track = midi.Track()
+    track.append(midi.TrackNameEvent())
+    for i in xrange(0,length):
+        on = midi.NoteOnEvent(channel=channel)
+        on.set_pitch(pitch[i])
+        on.set_velocity(velocity[i])
+        on.tick = tick[i]
+        track.append(on)
+    track.append(midi.EndOfTrackEvent)
+    return track
+
+def generate_tempo_track(tempos,length):
+    tick = generate_markov_seq(tempos['tick']['mat'],tempos['tick']['inds'],length)
+    mpqn = generate_markov_seq(tempos['mpqn']['mat'],tempos['mpqn']['inds'],length)
+
+    track = midi.Track()
+    track.append(midi.TrackNameEvent())
+    track.append(midi.TextMetaEvent())
+    for i in xrange(0,length):
+        te = midi.SetTempoEvent()
+        te.tick = tick[i]
+        te.set_mpqn(mpqn[i])
+    track.append(midi.EndOfTrackEvent())
+    return track
+
+class GenerateTransitionMatrix(Task):
+    data = Complex()
+
+    data_format = MusicFormats.dataframe
+
+    category = RegistryCategories.preprocessors
+    namespace = get_namespace(__module__)
+
+    help_text = "Process midi files."
+
+    def train(self, data, target, **kwargs):
+        """
+        Used in the training phase.  Override.
+        """
+        self.data = self.predict(data, **kwargs)
+
+    def predict(self, data, **kwargs):
+        """
+        Used in the predict phase, after training.  Override
+        """
+        tempos = {'tick' : [], 'mpqn' : []}
+        notes = {}
+        for (z,p) in enumerate(data):
+            log.info("On file {0}".format(z))
+            try:
+                m = midi.read_midifile(p['path'])
+            except Exception:
+                continue
+            try:
+                notes, tempos = process_midifile(m,notes,tempos)
+            except Exception:
+                log.exception("Could not get features")
+                continue
+        nm, tm = generate_matrices(notes,tempos)
+
+        data = {'files' : data, 'notes' : notes, 'tempos' : tempos, 'nm' : nm, 'tm': tm}
+
+        return data

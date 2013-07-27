@@ -26,5 +26,8 @@ class MusicFormatter(JSONFormat):
     def to_dataframe(self):
         return self.data
 
+    def from_midijson(self, input_data):
+        return input_data
+
 
 
