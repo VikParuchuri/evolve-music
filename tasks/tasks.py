@@ -26,6 +26,7 @@ from scikits.audiolab import oggwrite, play, oggread
 from time import gmtime, strftime
 import subprocess
 from midiutil.MidiFile import MIDIFile
+import midi
 
 import logging
 log = logging.getLogger(__name__)
@@ -472,6 +473,25 @@ def convert_to_ogg(mfile):
     subprocess.call(['oggenc', wavpath])
     return oggpath
 
+def additive_transform(pitch,msign=1):
+    multiplier = random.randint(1,3)*msign
+    return [p+(i*multiplier) for (i,p) in enumerate(pitch)]
+
+def generate_pitch(track_length):
+    pitch = list(range(track_length))
+    o = random.randint(0,4)
+    if o==0:
+        pitch = additive_transform(pitch)
+    elif o==1:
+        pitch = additive_transform(pitch,msign=-1)
+    elif o==2:
+        pitch = additive_transform(pitch)
+        pitch.reverse()
+    elif o==3:
+        pitch = additive_transform(pitch,msign=-1)
+        pitch.reverse()
+    return pitch
+
 def add_track(midi,track,length,time=0,pitch_min=0,pitch_max=127):
     tempo = random.randint(30,480)
 
@@ -480,11 +500,11 @@ def add_track(midi,track,length,time=0,pitch_min=0,pitch_max=127):
     track_length = int(length * math.floor(beats_per_second))
     midi.addTrackName(track,time,"Sample Track")
     midi.addTempo(track,time,tempo)
+    pitches = generate_pitch(track_length)
     # Add a note. addNote expects the following information:
     for i in xrange(0,track_length):
-        track = 0
         channel = 0
-        pitch = 60 + i
+        pitch = pitches[i]
         time = i
         duration = 1
         volume = 100

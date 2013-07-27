@@ -13,5 +13,7 @@ CONCURRENT_REQUESTS_PER_DOMAIN=1
 CONCURRENT_REQUESTS=1
 BOT_NAME = "musicstats"
 
+DEPTH_LIMIT = 2
+
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'crawler (+http://www.yourdomain.com)'
