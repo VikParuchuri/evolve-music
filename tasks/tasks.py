@@ -468,9 +468,10 @@ def convert_to_ogg(mfile):
     wavfile = file_end + ".wav"
     oggpath = os.path.abspath(os.path.join(settings.MIDI_PATH,oggfile))
     wavpath = os.path.abspath(os.path.join(settings.MIDI_PATH,wavfile))
-
-    subprocess.call(['fluidsynth', '-i','-n', '-F', wavpath, settings.SOUNDFONT_PATH, mfile])
-    subprocess.call(['oggenc', wavpath])
+    if not os.path.isfile(oggpath):
+        subprocess.call(['fluidsynth', '-i','-n', '-F', wavpath, settings.SOUNDFONT_PATH, mfile])
+        subprocess.call(['oggenc', wavpath])
+        os.remove(wavpath)
     return oggpath
 
 def additive_transform(pitch,msign=1):
@@ -682,6 +683,19 @@ def generate_tempo_track(tempos,length):
     track.append(midi.EndOfTrackEvent())
     return track
 
+def evaluate_midi_quality(pattern,clf):
+    midi_path = os.path.abspath(os.path.join(settings.MIDI_STORE_PATH,"tmp.mid"))
+    midi.write_midifile(midi_path,pattern)
+    oggpath = convert_to_ogg(midi_path)
+    data, fs, enc = oggread(oggpath)
+    features = process_song(data,fs)
+    quality = clf.predict_proba(features)[0,1]
+    return quality
+
+def generate_pattern(tracks):
+    pat = midi.Pattern(tracks=tracks)
+    return pat
+
 class GenerateTransitionMatrix(Task):
     data = Complex()
 
@@ -718,5 +732,71 @@ class GenerateTransitionMatrix(Task):
         nm, tm = generate_matrices(notes,tempos)
 
         data = {'files' : data, 'notes' : notes, 'tempos' : tempos, 'nm' : nm, 'tm': tm}
+
+        return data
+
+class GenerateMarkovTracks(Task):
+    data = Complex()
+
+    data_format = MusicFormats.dataframe
+
+    category = RegistryCategories.preprocessors
+    namespace = get_namespace(__module__)
+
+    help_text = "Process midi files."
+
+    args = {
+        'non_predictors' : ["labels","label_code","fs","enc","fname","Unnamed: 0"],
+        'target_var' : 'label_code',
+    }
+
+    def train(self, data, target, **kwargs):
+        """
+        Used in the training phase.  Override.
+        """
+        self.data = self.predict(data, **kwargs)
+
+    def predict(self, data, **kwargs):
+        """
+        Used in the predict phase, after training.  Override
+        """
+        frame1 = pd.read_csv(settings.MIDI_FEATURE_PATH)
+        frame2 = pd.read_csv(settings.FEATURE_PATH)
+
+        frame = pd.concat([frame1,frame2],axis=0)
+        non_predictors = kwargs.get('non_predictors')
+        target = kwargs.get('target_var')
+
+        frame.index = range(frame.shape[0])
+
+        alg = RandomForestTrain()
+        good_names = [i for i in frame.columns if i not in non_predictors]
+        for c in good_names:
+            frame[c] = frame[c].astype(float)
+
+        for c in good_names:
+            frame[c] = frame[c].real
+
+        clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
+        track_pool = []
+        for i in xrange(0,100):
+            track_pool.append(generate_audio_track(data['nm'],1000))
+
+        tempo_pool = []
+        for i in xrange(0,100):
+            tempo_pool.append(generate_tempo_track(data['tm'],1000))
+
+        pattern_pool = []
+        for i in xrange(0,100):
+            track_count = random.randint(1,8)
+            tempo_track = random.choice(tempo_pool)
+            tracks = [tempo_track]
+            for i in xrange(0,track_count):
+                tracks.append(random.choice(track_pool))
+            pattern_pool.append(generate_pattern(tracks))
+
+        quality = []
+        for p in pattern_pool:
+            quality.append(evaluate_midi_quality(p,clf))
 
         return data

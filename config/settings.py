@@ -47,6 +47,7 @@ VIZ_PATH = os.path.abspath(os.path.join(DATA_PATH, "visualize.csv"))
 SOUNDFONT_PATH = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
 MUSIC_STORE_PATH = os.path.abspath(os.path.join(DATA_PATH, "generated"))
+MIDI_STORE_PATH = os.path.abspath(os.path.join(DATA_PATH, "generated_midi"))
 
 #Commands are discovered here, and tasks/inputs/formats are imported using only these modules
 INSTALLED_APPS = [

@@ -84,7 +84,7 @@ def convert_to_ogg(mfile):
     wavfile = file_end + ".wav"
     oggpath = os.path.abspath(os.path.join(settings.MIDI_PATH,oggfile))
     wavpath = os.path.abspath(os.path.join(settings.MIDI_PATH,wavfile))
-    if not os.path.isfile(oggfile):
+    if not os.path.isfile(oggpath):
         subprocess.call(['fluidsynth', '-i','-n', '-F', wavpath, settings.SOUNDFONT_PATH, mfile])
         subprocess.call(['oggenc', wavpath])
         os.remove(wavpath)
