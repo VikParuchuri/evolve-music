@@ -652,11 +652,29 @@ def generate_markov_seq(m,inds,length):
         seq.append(inds[sind])
     return seq
 
+def generate_tick_seq(m,inds,length):
+    inds = [int(i) for i in inds]
+    start = random.choice(inds)
+    seq = []
+    seq.append(start)
+    sofar = 0
+    i = 1
+    while sofar<length:
+        ind = inds.index(seq[i-1])
+        sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
+        seq.append(inds[sind])
+        sofar += inds[sind]
+        i+=1
+    if sofar>length:
+        seq[-1]-=(sofar-length)
+    return seq
+
 def generate_audio_track(notes,length):
     channel = random.choice(notes.keys())
+    tick = generate_markov_seq(notes[channel]['tick']['mat'],notes[channel]['tick']['inds'],length)
+    length = len(tick)
     pitch = generate_markov_seq(notes[channel]['pitch']['mat'],notes[channel]['pitch']['inds'],length)
     velocity = generate_markov_seq(notes[channel]['velocity']['mat'],notes[channel]['velocity']['inds'],length)
-    tick = generate_markov_seq(notes[channel]['tick']['mat'],notes[channel]['tick']['inds'],length)
     track = midi.Track()
     track.append(midi.TrackNameEvent())
     for i in xrange(0,length):
@@ -670,6 +688,7 @@ def generate_audio_track(notes,length):
 
 def generate_tempo_track(tempos,length):
     tick = generate_markov_seq(tempos['tick']['mat'],tempos['tick']['inds'],length)
+    length = len(tick)
     mpqn = generate_markov_seq(tempos['mpqn']['mat'],tempos['mpqn']['inds'],length)
 
     track = midi.Track()
@@ -806,7 +825,7 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-        track_count = 5000
+        track_count = 100
         track_pool = []
         for i in xrange(0,track_count):
             track_pool.append(generate_audio_track(data['nm'],500))
@@ -818,7 +837,7 @@ class GenerateMarkovTracks(Task):
         pattern_pool = []
         all_instruments = list(set([t[1].channel for t in track_pool]))
         all_instruments.sort()
-        for i in xrange(0,int(math.floor(track_count))):
+        for i in xrange(0,int(math.floor(track_count/10))):
             track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
