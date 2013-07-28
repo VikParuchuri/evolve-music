@@ -656,7 +656,10 @@ def generate_markov_seq(m,inds,length):
         ind = inds.index(seq[i-1])
         try:
             sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
-            seq.append(inds[sind])
+            val = inds[sind]
+            if val == seq[i-1] and val == seq[i-2]:
+                val = find_closest_element(val-5,inds)
+            seq.append(val)
         except:
             seq.append(random.choice(inds))
     return seq
@@ -707,6 +710,10 @@ def generate_audio_track(notes,length,all_instruments= None):
     length = len(tick)
     pitch = generate_markov_seq(notes[instrument]['pitch']['mat'],notes[instrument]['pitch']['inds'],length)
     velocity = generate_markov_seq(notes[instrument]['velocity']['mat'],notes[instrument]['velocity']['inds'],length)
+    for i in xrange(0,len(velocity)):
+        if velocity[i]>100:
+            velocity[i]=100
+
     track = midi.Track()
     track.append(midi.TrackNameEvent())
     prog = midi.ProgramChangeEvent()
@@ -863,7 +870,7 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-        evolutions = 20
+        evolutions = 5
         track_count = 100
         patterns_to_pick = int(math.floor(track_count/4))
         remixes_to_make = int(math.floor(track_count/4))
