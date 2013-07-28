@@ -612,16 +612,14 @@ def process_midifile(m,notes,tempos):
     return notes, tempos
 
 def generate_matrix(seq):
-    seq = round(seq/5)*5
+    seq = [round(i/5)*5 for i in seq]
     unique_seq = list(set(seq))
     unique_seq.sort()
-    mat = np.zeros(len(unique_seq),len(unique_seq))
+    mat = np.zeros((len(unique_seq),len(unique_seq)))
     for i in xrange(0,len(seq)-1):
         i_ind = unique_seq.index(seq[i])
         i_1_ind = unique_seq.index(seq[i+1])
         mat[i_ind,i_1_ind] = mat[i_ind,i_1_ind] + 1
-    for i in xrange(0,mat.shape[0]):
-        mat[i,:] = mat[i,:]/np.sum(mat[i,:])
     return {'mat': mat, 'inds' : unique_seq}
 
 def generate_matrices(notes,tempos):
@@ -644,12 +642,13 @@ def pick_proba(vec):
     return choice
 
 def generate_markov_seq(m,inds,length):
+    inds = [int(i) for i in inds]
     start = random.choice(inds)
     seq = []
     seq.append(start)
     for i in xrange(1,length):
         ind = inds.index(seq[i-1])
-        sind = pick_proba(m[ind,:])
+        sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
         seq.append(inds[sind])
     return seq
 
@@ -666,7 +665,7 @@ def generate_audio_track(notes,length):
         on.set_velocity(velocity[i])
         on.tick = tick[i]
         track.append(on)
-    track.append(midi.EndOfTrackEvent)
+    track.append(midi.EndOfTrackEvent())
     return track
 
 def generate_tempo_track(tempos,length):
@@ -782,20 +781,22 @@ class GenerateMarkovTracks(Task):
             frame[c] = frame[c].real
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
+
+        track_count = 100
         track_pool = []
-        for i in xrange(0,100):
+        for i in xrange(0,track_count):
             track_pool.append(generate_audio_track(data['nm'],1000))
 
         tempo_pool = []
-        for i in xrange(0,100):
+        for i in xrange(0,int(math.floor(track_count/4))):
             tempo_pool.append(generate_tempo_track(data['tm'],1000))
 
         pattern_pool = []
-        for i in xrange(0,100):
-            track_count = random.randint(1,8)
+        for i in xrange(0,track_count):
+            track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
-            for i in xrange(0,track_count):
+            for i in xrange(0,track_number):
                 tracks.append(random.choice(track_pool))
             pattern_pool.append(generate_pattern(tracks))
 
