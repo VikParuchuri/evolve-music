@@ -872,70 +872,121 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-
+        evolutions = 3
         track_count = 100
-        track_pool = []
-        for i in xrange(0,track_count):
-            log.info("On track {0}".format(i))
-            track_pool.append(generate_audio_track(data['nm'],2000,data['in']))
-
-        tempo_pool = []
-        for i in xrange(0,int(math.floor(track_count/4))):
-            log.info("On tempo {0}".format(i))
-            tempo_pool.append(generate_tempo_track(data['tm'],2000))
-
-        pattern_pool = []
-        all_instruments = []
-        for t in track_pool:
-            for e in t:
-                if isinstance(e, midi.events.ProgramChangeEvent):
-                    all_instruments.append(e.data[0])
-        all_instruments = list(set(all_instruments))
-        all_instruments.sort()
-
-        for i in xrange(0,int(math.floor(track_count))):
-            log.info("On pattern {0}".format(i))
-            track_number = random.randint(1,3)
-            tempo_track = random.choice(tempo_pool)
-            tracks = [tempo_track]
-            instruments = []
-            for i in xrange(0,track_number):
-                dist, instrument = maximize_distance(instruments,all_instruments)
-                if dist <=8:
-                    break
-                sel_track_pool = []
-                for t in track_pool:
-                    for e in t:
-                        if isinstance(e, midi.events.ProgramChangeEvent) and e.data[0]==instrument:
-                            sel_track_pool.append(t)
-                            break
-                if len(sel_track_pool)==0:
-                    sel_track_pool = track_pool
-                sel_track = random.choice(sel_track_pool)
-                for e in sel_track:
-                    try:
-                        e.channel = i
-                    except:
-                        pass
-                tracks.append(sel_track)
-                instruments.append(instrument)
-            pattern_pool.append(generate_pattern(tracks))
-
-        quality = []
-        good_patterns = []
-        for (i,p) in enumerate(pattern_pool):
-            log.info("On pattern {0}".format(i))
-            try:
-                qual = evaluate_midi_quality(p,clf)
-                quality.append(qual)
-                good_patterns.append(p)
-            except:
-                log.exception("Could not get quality")
-                continue
-
-        quality, good_patterns = (list(x) for x in zip(*sorted(zip(quality, good_patterns))))
-
+        patterns_to_pick = int(math.floor(track_count/4))
+        remixes_to_make = int(math.floor(track_count/4))
+        additions_to_make = int(math.floor(track_count/4))
+        new_patterns_to_make = int(math.floor(track_count/4))
+        patterns = generate_patterns(track_count,data)
+        for i in xrange(0,evolutions):
+            new_quality, quality, patterns = rate_tracks(patterns, clf)
+            patterns = patterns[0:patterns_to_pick]
+            for i in xrange(0,remixes_to_make):
+                patterns.append(remix(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
+            for i in xrange(0,additions_to_make):
+                patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
+            patterns += generate_patterns(new_patterns_to_make, data)
         return data
+
+def add_song(song1,song2):
+    min_len = min([len(song1),len(song2)])
+    tracks =[]
+    for i in xrange(0,min_len):
+        new_song1 = [e for e in song1[i] if not isinstance(e,midi.events.TrackNameEvent) and not isinstance(e,midi.events.EndOfTrackEvent)]
+        new_song2 = [e for e in song2[i] if not isinstance(e,midi.events.TrackNameEvent) and not isinstance(e,midi.events.ProgramChangeEvent) and not isinstance(e,midi.events.TextMetaEvent)]
+        tracks.append(new_song1 + new_song2)
+    return midi.Pattern(tracks)
+
+def remix(song1, song2):
+    songs = [song1,song2]
+    all_tracks = song1[1:] + song2[1:]
+    track_len = len(song1) + len(song2) -2
+    tempo_track = random.randint(0,1)
+    tempo = songs[tempo_track][0]
+    new_len = random.randint(1,track_len)
+    tracks = []
+    for i in xrange(0,new_len):
+        choice = random.randint(0,len(all_tracks)-1)
+        tracks.append(all_tracks[choice])
+        del all_tracks[choice]
+        if len(all_tracks)==0:
+            break
+    return midi.Pattern([tempo] + tracks)
+
+def generate_patterns(track_count,data):
+    track_pool = []
+    for i in xrange(0,track_count):
+        log.info("On track {0}".format(i))
+        track_pool.append(generate_audio_track(data['nm'],2000,data['in']))
+
+    tempo_pool = []
+    for i in xrange(0,int(math.floor(track_count/4))):
+        log.info("On tempo {0}".format(i))
+        tempo_pool.append(generate_tempo_track(data['tm'],2000))
+
+    pattern_pool = []
+    all_instruments = []
+    for t in track_pool:
+        for e in t:
+            if isinstance(e, midi.events.ProgramChangeEvent):
+                all_instruments.append(e.data[0])
+    all_instruments = list(set(all_instruments))
+    all_instruments.sort()
+
+    for i in xrange(0,int(math.floor(track_count))):
+        log.info("On pattern {0}".format(i))
+        track_number = random.randint(1,3)
+        tempo_track = random.choice(tempo_pool)
+        tracks = [tempo_track]
+        instruments = []
+        for i in xrange(0,track_number):
+            dist, instrument = maximize_distance(instruments,all_instruments)
+            if dist <=8:
+                break
+            sel_track_pool = []
+            for t in track_pool:
+                for e in t:
+                    if isinstance(e, midi.events.ProgramChangeEvent) and e.data[0]==instrument:
+                        sel_track_pool.append(t)
+                        break
+            if len(sel_track_pool)==0:
+                sel_track_pool = track_pool
+            sel_track = random.choice(sel_track_pool)
+            for e in sel_track:
+                try:
+                    e.channel = i
+                except:
+                    pass
+            tracks.append(sel_track)
+            instruments.append(instrument)
+        pattern_pool.append(generate_pattern(tracks))
+    return pattern_pool
+
+def rate_tracks(pattern_pool, clf):
+    quality = []
+    good_patterns = []
+    for (i,p) in enumerate(pattern_pool):
+        log.info("On pattern {0}".format(i))
+        try:
+            qual = evaluate_midi_quality(p,clf)
+            quality.append(qual)
+            good_patterns.append(p)
+        except:
+            log.exception("Could not get quality")
+            continue
+
+    new_quality = [abs(i-round(i)) for i in quality]
+
+    new_quality, quality, good_patterns = (list(x) for x in zip(*sorted(zip(new_quality, quality, good_patterns))))
+
+    return new_quality, quality, good_patterns
+
+def generate_and_rate_tracks(track_count,data,clf):
+    pattern_pool = generate_patterns(track_count,data)
+    new_quality, quality, good_patterns = rate_tracks(pattern_pool, clf)
+
+    return new_quality, quality, good_patterns
 
 def maximize_distance(existing,possible):
     try:
