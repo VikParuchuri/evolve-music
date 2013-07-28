@@ -652,11 +652,18 @@ def generate_markov_seq(m,inds,length):
         seq.append(inds[sind])
     return seq
 
+def find_closest_element(e,l):
+    dists = [abs(i-e) for i in l]
+    ind = dists.index(min(dists))
+    return l[ind]
+
 def generate_tick_seq(m,inds,length):
+    tick_max = 10000
+    tick_max = find_closest_element(tick_max,inds)
     inds = [int(i) for i in inds]
     start = random.choice(inds)
-    if start > 150:
-        start = 150
+    if start > tick_max:
+        start = tick_max
     seq = []
     seq.append(start)
     sofar = 0
@@ -665,8 +672,8 @@ def generate_tick_seq(m,inds,length):
         ind = inds.index(seq[i-1])
         sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
         t = inds[sind]
-        if t>150:
-            t = 150
+        if t>tick_max:
+            t = tick_max
         seq.append(t)
         sofar += t
         i+=1
@@ -833,11 +840,11 @@ class GenerateMarkovTracks(Task):
         track_count = 100
         track_pool = []
         for i in xrange(0,track_count):
-            track_pool.append(generate_audio_track(data['nm'],500))
+            track_pool.append(generate_audio_track(data['nm'],1000))
 
         tempo_pool = []
         for i in xrange(0,int(math.floor(track_count/4))):
-            tempo_pool.append(generate_tempo_track(data['tm'],500))
+            tempo_pool.append(generate_tempo_track(data['tm'],1000))
 
         pattern_pool = []
         all_instruments = list(set([t[1].channel for t in track_pool]))
@@ -876,7 +883,7 @@ def maximize_distance(existing,possible):
     try:
         max_dists = []
         for p in possible:
-            max_dists.append(min([p-e for e in existing]))
+            max_dists.append(min([abs(p-e) for e in existing]))
         max_dist = max(max_dists)
         max_dist_index = max_dists.index(max_dist)
     except ValueError:
