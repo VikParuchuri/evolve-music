@@ -759,9 +759,7 @@ def write_and_convert(pattern,name="tmp.mid"):
     midi_path = write_midi_to_file(pattern,name)
     oggpath = convert_to_ogg_tmp(midi_path)
 
-def evaluate_midi_quality(**kwargs):
-    pattern = kwargs.get('pattern')
-    clf = kwargs.get('clf')
+def evaluate_midi_quality(pattern, clf):
     midi_path = write_midi_to_file(pattern)
     oggpath = convert_to_ogg_tmp(midi_path)
     data, fs, enc = oggread(oggpath)
@@ -871,7 +869,6 @@ class GenerateMarkovTracks(Task):
         patterns_to_pick = int(math.floor(track_count/4))
         remixes_to_make = int(math.floor(track_count/4))
         additions_to_make = int(math.floor(track_count/4))
-        new_patterns_to_make = int(math.floor(track_count/4))
         patterns = generate_patterns(track_count,data)
         for i in xrange(0,evolutions):
             new_quality, quality, patterns = rate_tracks(patterns, clf)
@@ -880,7 +877,7 @@ class GenerateMarkovTracks(Task):
                 patterns.append(remix(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
             for i in xrange(0,additions_to_make):
                 patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
-            patterns += generate_patterns(new_patterns_to_make, data)
+            patterns += generate_patterns(track_count - len(patterns), data)
 
         return data
 
@@ -959,16 +956,13 @@ def generate_patterns(track_count,data):
     return pattern_pool
 
 def rate_tracks(pattern_pool, clf):
-    p = Pool(4, maxtasksperchild=50)
     quality = []
     good_patterns = []
-    imap_pp = [{'clf' : clf, 'pattern' : p} for p in pattern_pool]
-    r = p.imap(evaluate_midi_quality, imap_pp,chunksize=1)
 
     for i in range(len(pattern_pool)):
         log.info("On pattern {0}".format(i))
         try:
-            qual = r.next()
+            qual = evaluate_midi_quality(pattern_pool[i],clf)
             quality.append(qual)
             good_patterns.append(pattern_pool[i])
         except Exception:
@@ -978,8 +972,6 @@ def rate_tracks(pattern_pool, clf):
     new_quality = [abs(i-round(i)) for i in quality]
 
     new_quality, quality, good_patterns = (list(x) for x in zip(*sorted(zip(new_quality, quality, good_patterns))))
-    p.close()
-    p.join()
     return new_quality, quality, good_patterns
 
 def generate_and_rate_tracks(track_count,data,clf):
