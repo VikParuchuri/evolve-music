@@ -640,15 +640,18 @@ def generate_matrices(notes,tempos):
     return nm, tm
 
 def pick_proba(vec):
-    choices = []
-    for i in xrange(0,len(vec)):
-        choices += [i] * int(math.floor(vec[i]*100))
-    choice = random.choice(choices)
+    try:
+        choices = []
+        for i in xrange(0,len(vec)):
+            choices += [i] * int(math.floor(vec[i]*100))
+        choice = random.choice(choices)
+    except Exception:
+        return 0
     return choice
 
 def generate_markov_seq(m,inds,length):
     inds = [int(i) for i in inds]
-    start = random.choice(inds)
+    start = inds[pick_proba(np.divide(np.sum(m,axis=1),1000))]
     seq = []
     seq.append(start)
     for i in xrange(1,length):
@@ -667,9 +670,9 @@ def find_closest_element(e,l):
 
 def generate_tick_seq(m,inds,length):
     inds = [int(i) for i in inds]
-    tick_max = 600
+    tick_max = 4000
     tick_max = int(find_closest_element(tick_max,inds))
-    start = random.choice(inds)
+    start = inds[pick_proba(np.divide(np.sum(m,axis=1),1000))]
     if start > tick_max:
         start = tick_max
     seq = []
