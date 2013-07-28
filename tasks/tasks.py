@@ -817,7 +817,7 @@ class GenerateMarkovTracks(Task):
         pattern_pool = []
         all_instruments = list(set([t[1].channel for t in track_pool]))
         all_instruments.sort()
-        for i in xrange(0,track_count):
+        for i in xrange(0,int(math.floor(track_count/10))):
             track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
@@ -848,12 +848,12 @@ class GenerateMarkovTracks(Task):
 
 def maximize_distance(existing,possible):
     try:
-        min_dists = []
+        max_dists = []
         for p in possible:
-            min_dists.append(min([p-e for e in existing]))
-        min_dist = min(min_dists)
-        min_dist_index = min_dists.index(min_dist)
+            max_dists.append(min([p-e for e in existing]))
+        max_dist = max(max_dists)
+        max_dist_index = max_dists.index(max_dist)
     except ValueError:
         return 0, random.choice(range(len(possible)))
 
-    return min_dist, min_dist_index
+    return max_dist, max_dist_index
