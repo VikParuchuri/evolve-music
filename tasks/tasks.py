@@ -687,12 +687,25 @@ def write_midi_to_file(pattern,name="tmp.mid"):
     midi.write_midifile(midi_path,pattern)
     return midi_path
 
+def convert_to_ogg_tmp(mfile):
+    file_end = mfile.split("/")[-1].split(".")[0]
+    oggfile = file_end + ".ogg"
+    wavfile = file_end + ".wav"
+    oggpath = os.path.abspath(os.path.join(settings.MIDI_STORE_PATH,oggfile))
+    wavpath = os.path.abspath(os.path.join(settings.MIDI_STORE_PATH,wavfile))
+    subprocess.call(['fluidsynth', '-i','-n', '-F', wavpath, settings.SOUNDFONT_PATH, mfile])
+    subprocess.call(['oggenc', wavpath])
+    os.remove(wavpath)
+    return oggpath
+
 def evaluate_midi_quality(pattern,clf):
     midi_path = write_midi_to_file(pattern)
-    oggpath = convert_to_ogg(midi_path)
+    oggpath = convert_to_ogg_tmp(midi_path)
     data, fs, enc = oggread(oggpath)
     features = process_song(data,fs)
     quality = clf.predict_proba(features)[0,1]
+    os.remove(oggpath)
+    os.remove(midi_path)
     return quality
 
 def generate_pattern(tracks):
@@ -785,19 +798,25 @@ class GenerateMarkovTracks(Task):
         track_count = 100
         track_pool = []
         for i in xrange(0,track_count):
-            track_pool.append(generate_audio_track(data['nm'],1000))
+            track_pool.append(generate_audio_track(data['nm'],200))
 
         tempo_pool = []
         for i in xrange(0,int(math.floor(track_count/4))):
-            tempo_pool.append(generate_tempo_track(data['tm'],1000))
+            tempo_pool.append(generate_tempo_track(data['tm'],200))
 
         pattern_pool = []
         for i in xrange(0,track_count):
             track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
+            instruments = []
             for i in xrange(0,track_number):
-                tracks.append(random.choice(track_pool))
+                sel_track_pool = [t for t in track_pool if t[1].channel not in instruments]
+                if len(sel_track_pool)==0:
+                    sel_track_pool = track_pool
+                sel_track = random.choice(sel_track_pool)
+                tracks.append(sel_track)
+                instruments.append(sel_track[1].channel)
             pattern_pool.append(generate_pattern(tracks))
 
         quality = []
