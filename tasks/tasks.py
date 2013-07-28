@@ -640,18 +640,24 @@ def generate_matrices(notes,tempos):
     return nm, tm
 
 def pick_proba(vec):
+    randint = random.uniform(0,np.sum(vec))
+    choice = None
     try:
-        choices = []
+        total = 0.0
         for i in xrange(0,len(vec)):
-            choices += [i] * int(math.floor(vec[i]*100))
-        choice = random.choice(choices)
+            total+=vec[i]
+            if total>randint:
+                choice=i
+                break
     except Exception:
         return 0
+    if choice is None:
+        choice = len(vec)-1
     return choice
 
 def generate_markov_seq(m,inds,length):
     inds = [int(i) for i in inds]
-    start = inds[pick_proba(np.divide(np.sum(m,axis=1),1000))]
+    start = inds[pick_proba(np.divide(np.sum(m,axis=1),1000000))]
     seq = []
     seq.append(start)
     for i in xrange(1,length):
@@ -672,22 +678,31 @@ def generate_tick_seq(m,inds,length):
     inds = [int(i) for i in inds]
     tick_max = 4000
     tick_max = int(find_closest_element(tick_max,inds))
-    start = inds[pick_proba(np.divide(np.sum(m,axis=1),1000))]
+    start = inds[pick_proba(np.divide(np.sum(m,axis=1),1000000))]
+    log.info("Start {0}".format(start))
     if start > tick_max:
         start = tick_max
     seq = []
     seq.append(start)
     sofar = 0
     i = 1
+    zeros_count = 0
     while sofar<length:
         ind = inds.index(seq[i-1])
         sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
         t = inds[sind]
         if t>tick_max:
             t = tick_max
+        if zeros_count>5:
+            t = int(find_closest_element(100,inds))
         seq.append(int(t))
         sofar += t
         i+=1
+
+        if t==0:
+            zeros_count+=1
+        else:
+            zeros_count = 0
     if sofar>length:
         seq[-1]-=(sofar-length)
     return seq
@@ -857,13 +872,16 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
+
         track_count = 100
         track_pool = []
         for i in xrange(0,track_count):
+            log.info("On track {0}".format(i))
             track_pool.append(generate_audio_track(data['nm'],2000,data['in']))
 
         tempo_pool = []
         for i in xrange(0,int(math.floor(track_count/4))):
+            log.info("On tempo {0}".format(i))
             tempo_pool.append(generate_tempo_track(data['tm'],2000))
 
         pattern_pool = []
@@ -876,6 +894,7 @@ class GenerateMarkovTracks(Task):
         all_instruments.sort()
 
         for i in xrange(0,int(math.floor(track_count))):
+            log.info("On pattern {0}".format(i))
             track_number = random.randint(1,3)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
@@ -904,7 +923,8 @@ class GenerateMarkovTracks(Task):
 
         quality = []
         good_patterns = []
-        for p in pattern_pool:
+        for (i,p) in enumerate(pattern_pool):
+            log.info("On pattern {0}".format(i))
             try:
                 qual = evaluate_midi_quality(p,clf)
                 quality.append(qual)
