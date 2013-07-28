@@ -679,6 +679,7 @@ def generate_tempo_track(tempos,length):
         te = midi.SetTempoEvent()
         te.tick = tick[i]
         te.set_mpqn(mpqn[i])
+        track.append(te)
     track.append(midi.EndOfTrackEvent())
     return track
 
@@ -846,10 +847,13 @@ class GenerateMarkovTracks(Task):
         return data
 
 def maximize_distance(existing,possible):
-    min_dists = []
-    for p in possible:
-        min_dists.append(min([p-e for e in existing]))
-    min_dist = min(min_dists)
-    min_dist_index = min_dists.index(min_dist)
+    try:
+        min_dists = []
+        for p in possible:
+            min_dists.append(min([p-e for e in existing]))
+        min_dist = min(min_dists)
+        min_dist_index = min_dists.index(min_dist)
+    except ValueError:
+        return 0, random.choice(range(len(possible)))
 
     return min_dist, min_dist_index
