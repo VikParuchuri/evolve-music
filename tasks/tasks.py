@@ -27,6 +27,7 @@ from time import gmtime, strftime
 import subprocess
 from midiutil.MidiFile import MIDIFile
 import midi
+from multiprocessing import Pool
 
 import logging
 log = logging.getLogger(__name__)
@@ -666,7 +667,7 @@ def find_closest_element(e,l):
 
 def generate_tick_seq(m,inds,length):
     inds = [int(i) for i in inds]
-    tick_max = 150
+    tick_max = 600
     tick_max = int(find_closest_element(tick_max,inds))
     start = random.choice(inds)
     if start > tick_max:
@@ -872,7 +873,7 @@ class GenerateMarkovTracks(Task):
         all_instruments.sort()
 
         for i in xrange(0,int(math.floor(track_count))):
-            track_number = random.randint(1,8)
+            track_number = random.randint(1,3)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
             instruments = []
@@ -908,6 +909,8 @@ class GenerateMarkovTracks(Task):
             except:
                 log.exception("Could not get quality")
                 continue
+
+        quality, good_patterns = (list(x) for x in zip(*sorted(zip(quality, good_patterns))))
 
         return data
 
