@@ -655,6 +655,8 @@ def generate_markov_seq(m,inds,length):
 def generate_tick_seq(m,inds,length):
     inds = [int(i) for i in inds]
     start = random.choice(inds)
+    if start > 150:
+        start = 150
     seq = []
     seq.append(start)
     sofar = 0
@@ -662,8 +664,11 @@ def generate_tick_seq(m,inds,length):
     while sofar<length:
         ind = inds.index(seq[i-1])
         sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
-        seq.append(inds[sind])
-        sofar += inds[sind]
+        t = inds[sind]
+        if t>150:
+            t = 150
+        seq.append(t)
+        sofar += t
         i+=1
     if sofar>length:
         seq[-1]-=(sofar-length)
@@ -671,7 +676,7 @@ def generate_tick_seq(m,inds,length):
 
 def generate_audio_track(notes,length):
     channel = random.choice(notes.keys())
-    tick = generate_markov_seq(notes[channel]['tick']['mat'],notes[channel]['tick']['inds'],length)
+    tick = generate_tick_seq(notes[channel]['tick']['mat'],notes[channel]['tick']['inds'],length)
     length = len(tick)
     pitch = generate_markov_seq(notes[channel]['pitch']['mat'],notes[channel]['pitch']['inds'],length)
     velocity = generate_markov_seq(notes[channel]['velocity']['mat'],notes[channel]['velocity']['inds'],length)
@@ -687,7 +692,7 @@ def generate_audio_track(notes,length):
     return track
 
 def generate_tempo_track(tempos,length):
-    tick = generate_markov_seq(tempos['tick']['mat'],tempos['tick']['inds'],length)
+    tick = generate_tick_seq(tempos['tick']['mat'],tempos['tick']['inds'],length)
     length = len(tick)
     mpqn = generate_markov_seq(tempos['mpqn']['mat'],tempos['mpqn']['inds'],length)
 
@@ -837,7 +842,7 @@ class GenerateMarkovTracks(Task):
         pattern_pool = []
         all_instruments = list(set([t[1].channel for t in track_pool]))
         all_instruments.sort()
-        for i in xrange(0,int(math.floor(track_count/10))):
+        for i in xrange(0,int(math.floor(track_count))):
             track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
@@ -859,9 +864,8 @@ class GenerateMarkovTracks(Task):
         for p in pattern_pool:
             try:
                 qual = evaluate_midi_quality(p,clf)
-                if qual > .7:
-                    quality.append(qual)
-                    good_patterns.append(p)
+                quality.append(qual)
+                good_patterns.append(p)
             except:
                 log.exception("Could not get quality")
                 continue
