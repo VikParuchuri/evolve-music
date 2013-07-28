@@ -590,11 +590,13 @@ class ProcessMidi(Task):
         return frame
 
 def process_midifile(m,notes,tempos):
+    instruments = []
     for track in m:
         instrument = None
         for e in track:
             if isinstance(e, midi.events.ProgramChangeEvent):
                 instrument = e.data[0]
+                instruments.append(instrument)
             if isinstance(e,midi.events.NoteOnEvent) and instrument is not None:
                 pitch, velocity = e.data
                 tick = e.tick
@@ -611,7 +613,7 @@ def process_midifile(m,notes,tempos):
                 tempos['mpqn'].append(mpqn)
         tempos['mpqn'].append(0)
         tempos['tick'].append(0)
-    return notes, tempos
+    return notes, tempos, instruments
 
 def generate_matrix(seq):
     seq = [round(i/5)*5 for i in seq]
@@ -686,8 +688,11 @@ def generate_tick_seq(m,inds,length):
         seq[-1]-=(sofar-length)
     return seq
 
-def generate_audio_track(notes,length):
-    instrument = random.choice(notes.keys())
+def generate_audio_track(notes,length,all_instruments= None):
+    if all_instruments is None:
+        instrument = random.choice(notes.keys())
+    else:
+        instrument = random.choice(all_instruments)
     tick = generate_tick_seq(notes[instrument]['tick']['mat'],notes[instrument]['tick']['inds'],length)
     length = len(tick)
     pitch = generate_markov_seq(notes[instrument]['pitch']['mat'],notes[instrument]['pitch']['inds'],length)
@@ -785,6 +790,7 @@ class GenerateTransitionMatrix(Task):
         """
         tempos = {'tick' : [], 'mpqn' : []}
         notes = {}
+        all_instruments = []
         for (z,p) in enumerate(data):
             log.info("On file {0}".format(z))
             try:
@@ -792,13 +798,14 @@ class GenerateTransitionMatrix(Task):
             except Exception:
                 continue
             try:
-                notes, tempos = process_midifile(m,notes,tempos)
+                notes, tempos, instruments = process_midifile(m,notes,tempos)
+                all_instruments.append(instruments)
             except Exception:
                 log.exception("Could not get features")
                 continue
         nm, tm = generate_matrices(notes,tempos)
 
-        data = {'files' : data, 'notes' : notes, 'tempos' : tempos, 'nm' : nm, 'tm': tm}
+        data = {'files' : data, 'notes' : notes, 'tempos' : tempos, 'nm' : nm, 'tm': tm, 'in' : list(chain.from_iterable(all_instruments))}
 
         return data
 
@@ -846,10 +853,10 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-        track_count = 5000
+        track_count = 100
         track_pool = []
         for i in xrange(0,track_count):
-            track_pool.append(generate_audio_track(data['nm'],2000))
+            track_pool.append(generate_audio_track(data['nm'],2000,data['in']))
 
         tempo_pool = []
         for i in xrange(0,int(math.floor(track_count/4))):
