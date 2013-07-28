@@ -870,13 +870,13 @@ class GenerateMarkovTracks(Task):
         remixes_to_make = int(math.floor(track_count/4))
         additions_to_make = int(math.floor(track_count/4))
         patterns = generate_patterns(track_count,data)
-        for i in xrange(0,evolutions):
+        for z in xrange(0,evolutions):
             new_quality, quality, patterns = rate_tracks(patterns, clf)
             patterns = patterns[0:patterns_to_pick]
             for i in xrange(0,remixes_to_make):
-                patterns.append(remix(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
+                patterns.append(remix(random.choice(patterns[:patterns_to_pick]), random.choice(patterns[:patterns_to_pick])))
             for i in xrange(0,additions_to_make):
-                patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
+                patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), random.choice(patterns[:patterns_to_pick])))
             patterns += generate_patterns(track_count - len(patterns), data)
         new_quality, quality, patterns = rate_tracks(patterns, clf)
 
