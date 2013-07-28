@@ -651,7 +651,7 @@ def generate_markov_seq(m,inds,length):
     for i in xrange(1,length):
         ind = inds.index(seq[i-1])
         try:
-            sind = pick_proba(m[ind,:]/np.sum(m[ind,:])+1)
+            sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
             seq.append(inds[sind])
         except:
             seq.append(random.choice(inds))
@@ -694,6 +694,9 @@ def generate_audio_track(notes,length):
     velocity = generate_markov_seq(notes[instrument]['velocity']['mat'],notes[instrument]['velocity']['inds'],length)
     track = midi.Track()
     track.append(midi.TrackNameEvent())
+    prog = midi.ProgramChangeEvent()
+    prog.set_value(instrument)
+    track.append(prog)
     for i in xrange(0,length):
         on = midi.NoteOnEvent(channel=0)
         on.set_pitch(pitch[i])
@@ -843,14 +846,14 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-        track_count = 100
+        track_count = 5000
         track_pool = []
         for i in xrange(0,track_count):
-            track_pool.append(generate_audio_track(data['nm'],1000))
+            track_pool.append(generate_audio_track(data['nm'],2000))
 
         tempo_pool = []
         for i in xrange(0,int(math.floor(track_count/4))):
-            tempo_pool.append(generate_tempo_track(data['tm'],1000))
+            tempo_pool.append(generate_tempo_track(data['tm'],2000))
 
         pattern_pool = []
         all_instruments = []
@@ -868,7 +871,7 @@ class GenerateMarkovTracks(Task):
             instruments = []
             for i in xrange(0,track_number):
                 dist, instrument = maximize_distance(instruments,all_instruments)
-                if dist <=5:
+                if dist <=8:
                     break
                 sel_track_pool = []
                 for t in track_pool:
@@ -909,6 +912,6 @@ def maximize_distance(existing,possible):
         max_dist = max(max_dists)
         max_dist_index = max_dists.index(max_dist)
     except ValueError:
-        return 0, random.choice(range(len(possible)))
+        return 10, random.choice(range(len(possible)))
 
     return max_dist, max_dist_index
