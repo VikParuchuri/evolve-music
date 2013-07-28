@@ -864,7 +864,7 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-        evolutions = 3
+        evolutions = 20
         track_count = 100
         patterns_to_pick = int(math.floor(track_count/4))
         remixes_to_make = int(math.floor(track_count/4))
@@ -878,6 +878,7 @@ class GenerateMarkovTracks(Task):
             for i in xrange(0,additions_to_make):
                 patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
             patterns += generate_patterns(track_count - len(patterns), data)
+        new_quality, quality, patterns = rate_tracks(patterns, clf)
 
         return data
 
