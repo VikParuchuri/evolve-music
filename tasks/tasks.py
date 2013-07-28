@@ -698,10 +698,19 @@ def convert_to_ogg_tmp(mfile):
     os.remove(wavpath)
     return oggpath
 
+def write_and_convert(pattern,name="tmp.mid"):
+    midi_path = write_midi_to_file(pattern,name)
+    oggpath = convert_to_ogg_tmp(midi_path)
+
 def evaluate_midi_quality(pattern,clf):
     midi_path = write_midi_to_file(pattern)
     oggpath = convert_to_ogg_tmp(midi_path)
     data, fs, enc = oggread(oggpath)
+    upto = fs * settings.MUSIC_TIME_LIMIT
+    if upto>len(data):
+        log.error("Input data is too short")
+        raise Exception
+    data = data[:upto,:]
     features = process_song(data,fs)
     quality = clf.predict_proba(features)[0,1]
     os.remove(oggpath)
@@ -798,20 +807,25 @@ class GenerateMarkovTracks(Task):
         track_count = 100
         track_pool = []
         for i in xrange(0,track_count):
-            track_pool.append(generate_audio_track(data['nm'],200))
+            track_pool.append(generate_audio_track(data['nm'],500))
 
         tempo_pool = []
         for i in xrange(0,int(math.floor(track_count/4))):
-            tempo_pool.append(generate_tempo_track(data['tm'],200))
+            tempo_pool.append(generate_tempo_track(data['tm'],500))
 
         pattern_pool = []
+        all_instruments = list(set([t[1].channel for t in track_pool]))
+        all_instruments.sort()
         for i in xrange(0,track_count):
             track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
             instruments = []
             for i in xrange(0,track_number):
-                sel_track_pool = [t for t in track_pool if t[1].channel not in instruments]
+                dist, instrument = maximize_distance(instruments,all_instruments)
+                if dist >=5:
+                    break
+                sel_track_pool = [t for t in track_pool if t[1].channel==all_instruments[instrument]]
                 if len(sel_track_pool)==0:
                     sel_track_pool = track_pool
                 sel_track = random.choice(sel_track_pool)
@@ -820,7 +834,22 @@ class GenerateMarkovTracks(Task):
             pattern_pool.append(generate_pattern(tracks))
 
         quality = []
+        good_patterns = []
         for p in pattern_pool:
-            quality.append(evaluate_midi_quality(p,clf))
+            try:
+                quality.append(evaluate_midi_quality(p,clf))
+                good_patterns.append(p)
+            except:
+                log.exception("Could not get quality")
+                continue
 
         return data
+
+def maximize_distance(existing,possible):
+    min_dists = []
+    for p in possible:
+        min_dists.append(min([p-e for e in existing]))
+    min_dist = min(min_dists)
+    min_dist_index = min_dists.index(min_dist)
+
+    return min_dist, min_dist_index
