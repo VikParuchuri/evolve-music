@@ -591,16 +591,18 @@ class ProcessMidi(Task):
 
 def process_midifile(m,notes,tempos):
     for track in m:
+        instrument = None
         for e in track:
-            if isinstance(e,midi.events.NoteOnEvent):
-                channel = e.channel
+            if isinstance(e, midi.events.ProgramChangeEvent):
+                instrument = e.data[0]
+            if isinstance(e,midi.events.NoteOnEvent) and instrument is not None:
                 pitch, velocity = e.data
                 tick = e.tick
-                if channel not in notes:
-                    notes[channel] = {'pitch' : [], 'velocity' : [] ,'tick' : []}
-                notes[channel]['pitch'].append(pitch)
-                notes[channel]['velocity'].append(velocity)
-                notes[channel]['tick'].append(tick)
+                if instrument not in notes:
+                    notes[instrument] = {'pitch' : [], 'velocity' : [] ,'tick' : []}
+                notes[instrument]['pitch'].append(pitch)
+                notes[instrument]['velocity'].append(velocity)
+                notes[instrument]['tick'].append(tick)
             elif isinstance(e,midi.events.SetTempoEvent):
                 tick = e.tick
                 tick = round(tick/10)*10
@@ -648,8 +650,11 @@ def generate_markov_seq(m,inds,length):
     seq.append(start)
     for i in xrange(1,length):
         ind = inds.index(seq[i-1])
-        sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
-        seq.append(inds[sind])
+        try:
+            sind = pick_proba(m[ind,:]/np.sum(m[ind,:])+1)
+            seq.append(inds[sind])
+        except:
+            seq.append(random.choice(inds))
     return seq
 
 def find_closest_element(e,l):
@@ -658,9 +663,9 @@ def find_closest_element(e,l):
     return l[ind]
 
 def generate_tick_seq(m,inds,length):
-    tick_max = 10000
-    tick_max = find_closest_element(tick_max,inds)
     inds = [int(i) for i in inds]
+    tick_max = 150
+    tick_max = int(find_closest_element(tick_max,inds))
     start = random.choice(inds)
     if start > tick_max:
         start = tick_max
@@ -674,7 +679,7 @@ def generate_tick_seq(m,inds,length):
         t = inds[sind]
         if t>tick_max:
             t = tick_max
-        seq.append(t)
+        seq.append(int(t))
         sofar += t
         i+=1
     if sofar>length:
@@ -682,15 +687,15 @@ def generate_tick_seq(m,inds,length):
     return seq
 
 def generate_audio_track(notes,length):
-    channel = random.choice(notes.keys())
-    tick = generate_tick_seq(notes[channel]['tick']['mat'],notes[channel]['tick']['inds'],length)
+    instrument = random.choice(notes.keys())
+    tick = generate_tick_seq(notes[instrument]['tick']['mat'],notes[instrument]['tick']['inds'],length)
     length = len(tick)
-    pitch = generate_markov_seq(notes[channel]['pitch']['mat'],notes[channel]['pitch']['inds'],length)
-    velocity = generate_markov_seq(notes[channel]['velocity']['mat'],notes[channel]['velocity']['inds'],length)
+    pitch = generate_markov_seq(notes[instrument]['pitch']['mat'],notes[instrument]['pitch']['inds'],length)
+    velocity = generate_markov_seq(notes[instrument]['velocity']['mat'],notes[instrument]['velocity']['inds'],length)
     track = midi.Track()
     track.append(midi.TrackNameEvent())
     for i in xrange(0,length):
-        on = midi.NoteOnEvent(channel=channel)
+        on = midi.NoteOnEvent(channel=0)
         on.set_pitch(pitch[i])
         on.set_velocity(velocity[i])
         on.tick = tick[i]
@@ -739,11 +744,12 @@ def evaluate_midi_quality(pattern,clf):
     midi_path = write_midi_to_file(pattern)
     oggpath = convert_to_ogg_tmp(midi_path)
     data, fs, enc = oggread(oggpath)
-    upto = fs * settings.MUSIC_TIME_LIMIT
+    maxl = fs * settings.MUSIC_TIME_LIMIT
+    upto = fs * 2
     if upto>len(data):
         log.error("Input data is too short")
         raise Exception
-    data = data[:upto,:]
+    data = data[:maxl,:]
     features = process_song(data,fs)
     quality = clf.predict_proba(features)[0,1]
     os.remove(oggpath)
@@ -847,8 +853,14 @@ class GenerateMarkovTracks(Task):
             tempo_pool.append(generate_tempo_track(data['tm'],1000))
 
         pattern_pool = []
-        all_instruments = list(set([t[1].channel for t in track_pool]))
+        all_instruments = []
+        for t in track_pool:
+            for e in t:
+                if isinstance(e, midi.events.ProgramChangeEvent):
+                    all_instruments.append(e.data[0])
+        all_instruments = list(set(all_instruments))
         all_instruments.sort()
+
         for i in xrange(0,int(math.floor(track_count))):
             track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
@@ -856,14 +868,24 @@ class GenerateMarkovTracks(Task):
             instruments = []
             for i in xrange(0,track_number):
                 dist, instrument = maximize_distance(instruments,all_instruments)
-                if dist >=5:
+                if dist <=5:
                     break
-                sel_track_pool = [t for t in track_pool if t[1].channel==all_instruments[instrument]]
+                sel_track_pool = []
+                for t in track_pool:
+                    for e in t:
+                        if isinstance(e, midi.events.ProgramChangeEvent) and e.data[0]==instrument:
+                            sel_track_pool.append(t)
+                            break
                 if len(sel_track_pool)==0:
                     sel_track_pool = track_pool
                 sel_track = random.choice(sel_track_pool)
+                for e in sel_track:
+                    try:
+                        e.channel = i
+                    except:
+                        pass
                 tracks.append(sel_track)
-                instruments.append(sel_track[1].channel)
+                instruments.append(instrument)
             pattern_pool.append(generate_pattern(tracks))
 
         quality = []
