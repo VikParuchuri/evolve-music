@@ -676,10 +676,11 @@ def generate_tempo_track(tempos,length):
     track.append(midi.TrackNameEvent())
     track.append(midi.TextMetaEvent())
     for i in xrange(0,length):
-        te = midi.SetTempoEvent()
-        te.tick = tick[i]
-        te.set_mpqn(mpqn[i])
-        track.append(te)
+        if mpqn[i]!=0:
+            te = midi.SetTempoEvent()
+            te.tick = tick[i]
+            te.set_mpqn(mpqn[i])
+            track.append(te)
     track.append(midi.EndOfTrackEvent())
     return track
 
@@ -805,7 +806,7 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-        track_count = 100
+        track_count = 5000
         track_pool = []
         for i in xrange(0,track_count):
             track_pool.append(generate_audio_track(data['nm'],500))
@@ -817,7 +818,7 @@ class GenerateMarkovTracks(Task):
         pattern_pool = []
         all_instruments = list(set([t[1].channel for t in track_pool]))
         all_instruments.sort()
-        for i in xrange(0,int(math.floor(track_count/10))):
+        for i in xrange(0,int(math.floor(track_count))):
             track_number = random.randint(1,8)
             tempo_track = random.choice(tempo_pool)
             tracks = [tempo_track]
@@ -838,8 +839,10 @@ class GenerateMarkovTracks(Task):
         good_patterns = []
         for p in pattern_pool:
             try:
-                quality.append(evaluate_midi_quality(p,clf))
-                good_patterns.append(p)
+                qual = evaluate_midi_quality(p,clf)
+                if qual > .7:
+                    quality.append(qual)
+                    good_patterns.append(p)
             except:
                 log.exception("Could not get quality")
                 continue
