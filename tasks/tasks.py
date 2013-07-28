@@ -2,8 +2,6 @@ from __future__ import division
 from itertools import chain
 import numpy as np
 import pandas as pd
-import re
-import collections
 import math
 from percept.tasks.base import Task
 from percept.fields.base import Complex, List, Dict, Float
@@ -13,14 +11,7 @@ from percept.conf.base import settings
 import os
 from percept.tasks.train import Train
 from sklearn.ensemble import RandomForestClassifier
-import pickle
 import random
-import sqlite3
-from pandas.io import sql
-from collections import namedtuple
-import random
-import math
-import operator
 from scipy.fftpack import dct
 from scikits.audiolab import oggwrite, play, oggread
 from time import gmtime, strftime
@@ -28,6 +19,7 @@ import subprocess
 from midiutil.MidiFile import MIDIFile
 import midi
 from multiprocessing import Pool
+from functools import partial
 
 import logging
 log = logging.getLogger(__name__)
@@ -767,7 +759,9 @@ def write_and_convert(pattern,name="tmp.mid"):
     midi_path = write_midi_to_file(pattern,name)
     oggpath = convert_to_ogg_tmp(midi_path)
 
-def evaluate_midi_quality(pattern,clf):
+def evaluate_midi_quality(**kwargs):
+    pattern = kwargs.get('pattern')
+    clf = kwargs.get('clf')
     midi_path = write_midi_to_file(pattern)
     oggpath = convert_to_ogg_tmp(midi_path)
     data, fs, enc = oggread(oggpath)
@@ -887,6 +881,7 @@ class GenerateMarkovTracks(Task):
             for i in xrange(0,additions_to_make):
                 patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), patterns[:patterns_to_pick]))
             patterns += generate_patterns(new_patterns_to_make, data)
+
         return data
 
 def add_song(song1,song2):
@@ -964,22 +959,27 @@ def generate_patterns(track_count,data):
     return pattern_pool
 
 def rate_tracks(pattern_pool, clf):
+    p = Pool(4, maxtasksperchild=50)
     quality = []
     good_patterns = []
-    for (i,p) in enumerate(pattern_pool):
+    imap_pp = [{'clf' : clf, 'pattern' : p} for p in pattern_pool]
+    r = p.imap(evaluate_midi_quality, imap_pp,chunksize=1)
+
+    for i in range(len(pattern_pool)):
         log.info("On pattern {0}".format(i))
         try:
-            qual = evaluate_midi_quality(p,clf)
+            qual = r.next()
             quality.append(qual)
-            good_patterns.append(p)
-        except:
+            good_patterns.append(pattern_pool[i])
+        except Exception:
             log.exception("Could not get quality")
             continue
 
     new_quality = [abs(i-round(i)) for i in quality]
 
     new_quality, quality, good_patterns = (list(x) for x in zip(*sorted(zip(new_quality, quality, good_patterns))))
-
+    p.close()
+    p.join()
     return new_quality, quality, good_patterns
 
 def generate_and_rate_tracks(track_count,data,clf):
