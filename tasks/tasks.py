@@ -666,9 +666,8 @@ def find_closest_element(e,l):
     ind = dists.index(min(dists))
     return l[ind]
 
-def generate_tick_seq(m,inds,length):
+def generate_tick_seq(m,inds,length,tick_max=4000):
     inds = [int(i) for i in inds]
-    tick_max = 4000
     tick_max = int(find_closest_element(tick_max,inds))
     start = inds[pick_proba(np.divide(np.sum(m,axis=1),1000000))]
     log.info("Start {0}".format(start))
@@ -704,7 +703,7 @@ def generate_audio_track(notes,length,all_instruments= None):
         instrument = random.choice(notes.keys())
     else:
         instrument = random.choice(all_instruments)
-    tick = generate_tick_seq(notes[instrument]['tick']['mat'],notes[instrument]['tick']['inds'],length)
+    tick = generate_tick_seq(notes[instrument]['tick']['mat'],notes[instrument]['tick']['inds'],length,tick_max=160)
     length = len(tick)
     pitch = generate_markov_seq(notes[instrument]['pitch']['mat'],notes[instrument]['pitch']['inds'],length)
     velocity = generate_markov_seq(notes[instrument]['velocity']['mat'],notes[instrument]['velocity']['inds'],length)
