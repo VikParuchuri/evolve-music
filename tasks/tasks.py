@@ -706,11 +706,11 @@ def generate_audio_track(notes,length,all_instruments= None):
     if all_instruments is None:
         instrument = random.choice(notes.keys())
     else:
-        #ai = [a for a in all_instruments if a<42 and a>55]
-        #if len(ai)==0:
-        instrument = random.choice(all_instruments)
-        #else:
-        #    instrument = random.choice(ai)
+        ai = [a for a in all_instruments if a<42 and a>55]
+        if len(ai)==0:
+            instrument = random.choice(all_instruments)
+        else:
+            instrument = random.choice(ai)
     tick = generate_tick_seq(notes[instrument]['tick']['mat'],notes[instrument]['tick']['inds'],length,tick_max=160)
     length = len(tick)
     pitch = generate_markov_seq(notes[instrument]['pitch']['mat'],notes[instrument]['pitch']['inds'],length)
@@ -891,8 +891,8 @@ class GenerateMarkovTracks(Task):
             patterns = patterns[0:patterns_to_pick]
             for i in xrange(0,remixes_to_make):
                 patterns.append(remix(random.choice(patterns[:patterns_to_pick]), random.choice(patterns[:patterns_to_pick])))
-            for i in xrange(0,additions_to_make):
-                patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), random.choice(patterns[:patterns_to_pick])))
+            #for i in xrange(0,additions_to_make):
+            #    patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), random.choice(patterns[:patterns_to_pick])))
             new_patterns = []
             for p in patterns:
                 if p not in new_patterns:
@@ -906,10 +906,12 @@ class GenerateMarkovTracks(Task):
             time = strftime("%m-%d-%Y-%H%M%S", gmtime())
             fname = time+random.choice(words)+".mid"
             oggpath = write_and_convert(p,fname)
-            data, fs, enc = oggread(oggpath)
-            f = process_song(data[:settings.MUSIC_TIME_LIMIT * fs,:],fs)
+            dat, fs, enc = oggread(oggpath)
+            f = process_song(dat[:settings.MUSIC_TIME_LIMIT * fs,:],fs)
             feats.append(f)
         feats = pd.DataFrame(feats)
+        feats['label_code'] = [2] * feats.shape[0]
+        feats['label'] = ["generated"] * feats.shape[0]
         feats.to_csv(os.path.abspath(os.path.join(settings.DATA_PATH,"generated_midi_features.csv")))
 
         return data
