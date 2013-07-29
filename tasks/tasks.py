@@ -29,6 +29,9 @@ DISTANCE_MIN=1
 CHARACTER_DISTANCE_MIN = .2
 RESET_SCENE_EVERY = 5
 
+wordlistfile = os.path.abspath(os.path.join(settings.PROJECT_PATH, "data", "wordlist.txt"))
+words = open(wordlistfile).read().split("\r\n")
+
 def make_df(datalist, labels, name_prefix=""):
     df = pd.DataFrame(datalist).T
     if name_prefix!="":
@@ -703,7 +706,11 @@ def generate_audio_track(notes,length,all_instruments= None):
     if all_instruments is None:
         instrument = random.choice(notes.keys())
     else:
+        #ai = [a for a in all_instruments if a<42 and a>55]
+        #if len(ai)==0:
         instrument = random.choice(all_instruments)
+        #else:
+        #    instrument = random.choice(ai)
     tick = generate_tick_seq(notes[instrument]['tick']['mat'],notes[instrument]['tick']['inds'],length,tick_max=160)
     length = len(tick)
     pitch = generate_markov_seq(notes[instrument]['pitch']['mat'],notes[instrument]['pitch']['inds'],length)
@@ -758,6 +765,10 @@ def convert_to_ogg_tmp(mfile):
     subprocess.call(['oggenc', wavpath])
     os.remove(wavpath)
     return oggpath
+
+def convert_and_rename(mfile,filename):
+    oggpath = convert_to_ogg_tmp(mfile)
+
 
 def write_and_convert(pattern,name="tmp.mid"):
     midi_path = write_midi_to_file(pattern,name)
@@ -896,8 +907,7 @@ def add_song(song1,song2):
     tracks =[]
     for i in xrange(0,min_len):
         new_song1 = [e for e in song1[i] if not isinstance(e,midi.events.TrackNameEvent) and not isinstance(e,midi.events.EndOfTrackEvent)]
-        #and not isinstance(e,midi.events.ProgramChangeEvent)
-        new_song2 = [e for e in song2[i] if not isinstance(e,midi.events.TrackNameEvent)  and not isinstance(e,midi.events.TextMetaEvent)]
+        new_song2 = [e for e in song2[i] if not isinstance(e,midi.events.TrackNameEvent) and not isinstance(e,midi.events.ProgramChangeEvent) and not isinstance(e,midi.events.TextMetaEvent)]
         tracks.append(new_song1 + new_song2)
     return midi.Pattern(tracks)
 
