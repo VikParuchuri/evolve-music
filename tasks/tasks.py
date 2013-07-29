@@ -900,6 +900,11 @@ class GenerateMarkovTracks(Task):
             patterns += generate_patterns(track_count - len(patterns), data)
         new_quality, quality, patterns = rate_tracks(patterns, clf)
 
+        for (i,p) in enumerate(patterns):
+            time = strftime("%m-%d-%Y-%H%M%S", gmtime())
+            fname = time+random.choice(words)+".mid"
+            write_and_convert(p,fname)
+
         return data
 
 def add_song(song1,song2):
