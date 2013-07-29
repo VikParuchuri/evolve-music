@@ -19,9 +19,18 @@ load_or_install(c("RJSONIO","ggplot2","stringr","foreach","wordcloud","lsa","MAS
 
 features = read.csv("stored_data/visualize.csv",stringsAsFactors=FALSE)
 
+features = read.csv("stored_data/midi_features.csv",stringsAsFactors=FALSE)
+
+midi_feats = read.csv("stored_data/generated_midi_features.csv",stringsAsFactors=FALSE)
+
+bad_feats = c("fs","enc","fname")
 non_predictors = c("label","fs","enc","fname","label_code")
 
 names(features)[(ncol(features)-4):ncol(features)] = non_predictors
+
+names(midi_feats)[(ncol(midi_feats)-1):ncol(midi_feats)] = c("label_code","label")
+features = features[,!names(features) %in% bad_feats]
+features = do.call(rbind,list(features,midi_feats))
 
 features$label_code = as.numeric(as.factor(features$label))
 feature_names = names(features)[!names(features) %in% c(non_predictors,"X")]
@@ -42,7 +51,7 @@ newtrain<-data.frame(x=svd_train[,1],y=svd_train[,2],label_code=features$label_c
 #model = svm(score ~ x + y, data = newtrain)
 #plot(model,newtrain)
 
-collapse_frame = do.call(rbind,by(features[,feature_names],feature$label_code,function(x) apply(x,2,mean)))
+collapse_frame = do.call(rbind,by(features[,feature_names],features$label_code,function(x) apply(x,2,mean)))
 line_count = tapply(tf$result_label,tf$result_label,length)
 scaled_data = scale(collapse_frame)
 scaled_data = apply(scaled_data,2,function(x) {
