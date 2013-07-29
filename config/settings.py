@@ -5,6 +5,7 @@ Settings for evolve-music
 from path import path
 import os
 import sys
+from private import *
 
 #Various paths
 PROJECT_PATH = path(__file__).dirname().dirname()

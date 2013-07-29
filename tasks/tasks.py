@@ -301,8 +301,6 @@ class EvolveMusic(Task):
             fname = data['fname'][i]
             vec, fs, enc = read_sound(fname)
             label = data["labels"][i]
-            if counter>10:
-                break
             if label=="classical":
                 counter+=1
                 name = fname.split("/")[-1]
@@ -311,7 +309,7 @@ class EvolveMusic(Task):
                 headers = "song_index,iteration,quality,distance,splice_song_index,splice_song"
                 v2s = [headers,"{0},{1},{2},{3},{4},{5}".format(i,-1,initial_quality,0,0,"N/A")]
                 print(headers)
-                for z in xrange(0,10):
+                for z in xrange(0,100):
                     if z%10==0 or z==0:
                         v2ind = random.randint(0,data.shape[0]-1)
                         v2fname = data['fname'][v2ind]
@@ -658,7 +656,7 @@ def generate_markov_seq(m,inds,length):
             sind = pick_proba(m[ind,:]/np.sum(m[ind,:]))
             val = inds[sind]
             if val == seq[i-1] and val == seq[i-2]:
-                val = find_closest_element(val-5,inds)
+                val = find_closest_element(val-40,inds)
             seq.append(val)
         except:
             seq.append(random.choice(inds))
@@ -870,7 +868,7 @@ class GenerateMarkovTracks(Task):
 
         clf = alg.train(np.asarray(frame[good_names]),frame[target],**alg.args)
 
-        evolutions = 5
+        evolutions = 2
         track_count = 100
         patterns_to_pick = int(math.floor(track_count/4))
         remixes_to_make = int(math.floor(track_count/4))
@@ -883,6 +881,11 @@ class GenerateMarkovTracks(Task):
                 patterns.append(remix(random.choice(patterns[:patterns_to_pick]), random.choice(patterns[:patterns_to_pick])))
             for i in xrange(0,additions_to_make):
                 patterns.append(add_song(random.choice(patterns[:patterns_to_pick]), random.choice(patterns[:patterns_to_pick])))
+            new_patterns = []
+            for p in patterns:
+                if p not in new_patterns:
+                    new_patterns.append(p)
+            patterns = new_patterns
             patterns += generate_patterns(track_count - len(patterns), data)
         new_quality, quality, patterns = rate_tracks(patterns, clf)
 
@@ -893,7 +896,8 @@ def add_song(song1,song2):
     tracks =[]
     for i in xrange(0,min_len):
         new_song1 = [e for e in song1[i] if not isinstance(e,midi.events.TrackNameEvent) and not isinstance(e,midi.events.EndOfTrackEvent)]
-        new_song2 = [e for e in song2[i] if not isinstance(e,midi.events.TrackNameEvent) and not isinstance(e,midi.events.ProgramChangeEvent) and not isinstance(e,midi.events.TextMetaEvent)]
+        #and not isinstance(e,midi.events.ProgramChangeEvent)
+        new_song2 = [e for e in song2[i] if not isinstance(e,midi.events.TrackNameEvent)  and not isinstance(e,midi.events.TextMetaEvent)]
         tracks.append(new_song1 + new_song2)
     return midi.Pattern(tracks)
 
@@ -930,7 +934,6 @@ def generate_patterns(track_count,data):
         for e in t:
             if isinstance(e, midi.events.ProgramChangeEvent):
                 all_instruments.append(e.data[0])
-    all_instruments = list(set(all_instruments))
     all_instruments.sort()
 
     for i in xrange(0,int(math.floor(track_count))):
@@ -989,12 +992,17 @@ def generate_and_rate_tracks(track_count,data,clf):
 
 def maximize_distance(existing,possible):
     try:
-        max_dists = []
-        for p in possible:
-            max_dists.append(min([abs(p-e) for e in existing]))
-        max_dist = max(max_dists)
-        max_dist_index = max_dists.index(max_dist)
+        instrument = None
+        counter = 0
+        max_dist = 0
+        while counter < 100 and ((instrument==None or max_dist<=8) or (instrument>=42 and instrument<=55)):
+            counter+=1
+            instrument = random.choice(possible)
+            max_dist = min([abs(instrument-e) for e in existing])
     except ValueError:
         return 10, random.choice(range(len(possible)))
 
-    return max_dist, max_dist_index
+    if instrument is None:
+        return 0, 1
+
+    return max_dist, instrument
