@@ -773,6 +773,7 @@ def convert_and_rename(mfile,filename):
 def write_and_convert(pattern,name="tmp.mid"):
     midi_path = write_midi_to_file(pattern,name)
     oggpath = convert_to_ogg_tmp(midi_path)
+    return oggpath
 
 def evaluate_midi_quality(pattern, clf):
     midi_path = write_midi_to_file(pattern)
@@ -900,10 +901,16 @@ class GenerateMarkovTracks(Task):
             patterns += generate_patterns(track_count - len(patterns), data)
         new_quality, quality, patterns = rate_tracks(patterns, clf)
 
+        feats = []
         for (i,p) in enumerate(patterns):
             time = strftime("%m-%d-%Y-%H%M%S", gmtime())
             fname = time+random.choice(words)+".mid"
-            write_and_convert(p,fname)
+            oggpath = write_and_convert(p,fname)
+            data, fs, enc = oggread(oggpath)
+            f = process_song(data[:settings.MUSIC_TIME_LIMIT * fs,:],fs)
+            feats.append(f)
+        feats = pd.DataFrame(feats)
+        feats.to_csv(os.path.abspath(os.path.join(settings.DATA_PATH,"generated_midi_features.csv")))
 
         return data
 
